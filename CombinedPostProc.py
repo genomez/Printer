@@ -425,34 +425,66 @@ def remove_duplicate_tool(gcode_file, lines):
     if initial_tool is None:
         status_message = "; Tool selection removal: No initial tool selection (T0-T5) found in G-code"
     else:
-        # Look for the second occurrence of the same tool selection
-        found_second = False
-        second_tool_index = -1
-        
-        for i in range(initial_tool_index + 1, len(lines)):
-            line = lines[i].strip()
+        # Special handling for T4 - remove BOTH occurrences
+        if initial_tool == "T4":
+            # Comment out the first T4
+            original_line = lines[initial_tool_index].rstrip()
+            lines[initial_tool_index] = f"; REMOVED T4 (FIRST OCCURRENCE): {original_line}\n"
             
-            # Stop searching if we hit layer change
-            if ";LAYER_CHANGE" in line:
-                break
+            # Look for the second occurrence of T4
+            found_second = False
+            second_tool_index = -1
+            
+            for i in range(initial_tool_index + 1, len(lines)):
+                line = lines[i].strip()
                 
-            # Check if this line matches our initial tool
-            if line.startswith(initial_tool):
-                found_second = True
-                second_tool_index = i
-                break
+                # Stop searching if we hit layer change
+                if ";LAYER_CHANGE" in line:
+                    break
+                    
+                # Check if this line matches T4
+                if line.startswith("T4"):
+                    found_second = True
+                    second_tool_index = i
+                    break
+            
+            # Comment out the second occurrence if found
+            if found_second:
+                original_line = lines[second_tool_index].rstrip()
+                lines[second_tool_index] = f"; REMOVED T4 (SECOND OCCURRENCE): {original_line}\n"
+                status_message = f"; Tool selection removal: T4 detected - removed BOTH occurrences at lines {initial_tool_index+1} and {second_tool_index+1}"
+            else:
+                status_message = f"; Tool selection removal: T4 detected - removed first occurrence at line {initial_tool_index+1}, no second occurrence found before first layer"
         
-        # Comment out the second occurrence if found
-        if found_second:
-            original_line = lines[second_tool_index].rstrip()
-            lines[second_tool_index] = f"; REMOVED DUPLICATE TOOL: {original_line}\n"
-            status_message = f"; Tool selection removal: Successfully commented out duplicate {initial_tool} command at line {second_tool_index+1} (before first layer)"
         else:
-            status_message = f"; Tool selection removal: No duplicate {initial_tool} found before first layer. Initial {initial_tool} found at line {initial_tool_index+1}"
+            # Original logic for all other tools (T0-T3, T5)
+            # Look for the second occurrence of the same tool selection
+            found_second = False
+            second_tool_index = -1
+            
+            for i in range(initial_tool_index + 1, len(lines)):
+                line = lines[i].strip()
+                
+                # Stop searching if we hit layer change
+                if ";LAYER_CHANGE" in line:
+                    break
+                    
+                # Check if this line matches our initial tool
+                if line.startswith(initial_tool):
+                    found_second = True
+                    second_tool_index = i
+                    break
+            
+            # Comment out the second occurrence if found
+            if found_second:
+                original_line = lines[second_tool_index].rstrip()
+                lines[second_tool_index] = f"; REMOVED DUPLICATE TOOL: {original_line}\n"
+                status_message = f"; Tool selection removal: Successfully commented out duplicate {initial_tool} command at line {second_tool_index+1} (before first layer)"
+            else:
+                status_message = f"; Tool selection removal: No duplicate {initial_tool} found before first layer. Initial {initial_tool} found at line {initial_tool_index+1}"
 
     # Append status comment (will be added at the end of the whole process)
     return lines, status_message
-
 def remove_filament_swap_spiral(gcode_file, lines):
     # Define the three key lines that make up the erroneous filament swap spiral movement
     first   = "G2 Z0.4 I0.86 J0.86 P1 F10000 ; spiral lift a little from second lift\n"
