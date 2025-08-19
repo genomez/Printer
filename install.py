@@ -105,43 +105,54 @@ class PrinterInstaller:
             self.log("Would run: sh 'mjpg_streamer'")
             return True
             
-        # Make it executable and run it
-        os.chmod(script_path, 0o755)
-        
+        # Prefer Python implementation if available; fallback to shell script
+        py_script_path = REPO_ROOT / "scripts" / "mjpg_streamer_install.py"
+        shell_script_path = REPO_ROOT / "scripts" / "mjpg_streamer_install.sh"
+
         if self.dry_run:
-            self.log("Would run: sh 'mjpg_streamer_install.sh'")
+            if py_script_path.exists():
+                self.log("Would run: python3 'scripts/mjpg_streamer_install.py'")
+            else:
+                self.log("Would run: sh 'scripts/mjpg_streamer_install.sh'")
             return True
-            
-        # Run the script with live output
-        self.log("Running mjpg_streamer installation script...")
+
+        # Execute with optional live output only when verbose
         try:
-            # Use subprocess.Popen for real-time output
-            process = subprocess.Popen(
-                f"sh '{script_path}'", 
-                shell=True, 
-                stdout=subprocess.PIPE, 
-                stderr=subprocess.STDOUT,
-                universal_newlines=True,
-                bufsize=1
-            )
-            
-            # Stream output in real-time
-            for line in iter(process.stdout.readline, ''):
-                if line:
-                    print(line.rstrip())
-                    
-            process.stdout.close()
-            return_code = process.wait()
-            
+            if py_script_path.exists():
+                command = f"python3 '{py_script_path}'"
+            else:
+                # Ensure shell script is executable
+                if shell_script_path.exists():
+                    os.chmod(shell_script_path, 0o755)
+                command = f"sh '{shell_script_path}'"
+
+            if self.verbose:
+                self.log("Running mjpg_streamer installer with live output...")
+                process = subprocess.Popen(
+                    command,
+                    shell=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    universal_newlines=True,
+                    bufsize=1,
+                )
+                for line in iter(process.stdout.readline, ''):
+                    if line:
+                        print(line.rstrip())
+                process.stdout.close()
+                return_code = process.wait()
+            else:
+                result = subprocess.run(command, shell=True, capture_output=True, text=True)
+                return_code = result.returncode
+
             if return_code == 0:
                 self.log("mjpg_streamer installation completed successfully")
                 return True
             else:
                 self.log(f"mjpg_streamer installation failed with return code {return_code}", "ERROR")
                 return False
-                
         except Exception as e:
-            self.log(f"Failed to run mjpg_streamer script: {e}", "ERROR")
+            self.log(f"Failed to run mjpg_streamer installer: {e}", "ERROR")
             return False
             
     def install_kamp(self):
