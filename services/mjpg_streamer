@@ -1,0 +1,159 @@
+#!/bin/sh /etc/rc.common
+# Tunables
+VIDEO_DEV="/dev/video0"
+RESOLUTION="1920x1080"
+FPS="10"
+PORT="8080"
+WWW_DIR="/opt/share/www_mjpg-streamer"
+BIN="/opt/bin/mjpg_streamer"
+LD_LIBRARY_PATH="/opt/lib/mjpg-streamer"
+RESTART_INTERVAL="15"
+DEDICATED_LOG="/var/log/mjpg_streamer.log"
+MAX_LOG_SIZE="1048576"
+
+START=99
+STOP=10
+USE_PROCD=1
+EXTRA_COMMANDS="status restart_service_only"
+EXTRA_HELP="    status                Show mjpg_streamer status
+    restart_service_only  Restart service without touching cron job"
+TAG="mjpg_streamer"
+CRON_COMMENT="# mjpg_streamer auto-restart"
+AUTO_RESTART_FLAG="/tmp/.mjpg_streamer_auto_restart"
+
+tstamp() { TZ=PST8PDT date '+%Y-%m-%d %I:%M:%S %p %Z'; }
+log() {
+    local msg="[$(tstamp)] $*"
+    echo "$msg"
+    logger -t "$TAG" "$*"
+    echo "$msg" >> "$DEDICATED_LOG"
+    
+    if [ -f "$DEDICATED_LOG" ] && [ "$(stat -c%s "$DEDICATED_LOG" 2>/dev/null || echo 0)" -gt "$MAX_LOG_SIZE" ]; then
+        mv "$DEDICATED_LOG" "${DEDICATED_LOG}.old"
+        echo "[$(tstamp)] Log rotated due to size limit" > "$DEDICATED_LOG"
+    fi
+}
+
+setup_auto_restart() {
+    if [ "$RESTART_INTERVAL" -gt 0 ] 2>/dev/null; then
+        if ! crontab -l 2>/dev/null | grep -q "$CRON_COMMENT"; then
+            log "Setting up auto-restart every $RESTART_INTERVAL minutes"
+            {
+                crontab -l 2>/dev/null
+                echo "*/$RESTART_INTERVAL * * * * /etc/init.d/mjpg_streamer restart_service_only $CRON_COMMENT"
+            } | crontab -
+            log "Auto-restart scheduled every $RESTART_INTERVAL minutes"
+        else
+            log "Auto-restart already configured ($RESTART_INTERVAL min intervals)"
+        fi
+    else
+        log "Auto-restart disabled (RESTART_INTERVAL=$RESTART_INTERVAL)"
+    fi
+}
+
+remove_auto_restart() {
+    if crontab -l 2>/dev/null | grep -q "$CRON_COMMENT"; then
+        crontab -l 2>/dev/null | grep -v "$CRON_COMMENT" | crontab -
+        log "Auto-restart cron job removed"
+    fi
+}
+
+start_service() {
+    local is_auto_restart=0
+    [ -f "$AUTO_RESTART_FLAG" ] && is_auto_restart=1
+    
+    if [ "$is_auto_restart" -eq 1 ]; then
+        log "=== mjpg_streamer auto-restart requested ==="
+    else
+        log "=== mjpg_streamer start requested ==="
+    fi
+    
+    mkdir -p "$(dirname "$DEDICATED_LOG")"
+    
+    for i in $(seq 1 30); do
+        [ -x "$BIN" ] && break
+        log "Waiting for $BIN ($i/30)..."
+        sleep 1
+    done
+    [ -x "$BIN" ] || { log "FATAL: $BIN not found"; return 1; }
+    
+    [ -c "$VIDEO_DEV" ] || { log "FATAL: $VIDEO_DEV missing"; return 1; }
+    
+    if fuser "$VIDEO_DEV" 2>/dev/null | grep -q '[0-9]'; then
+        log "$VIDEO_DEV busy -- attempting graceful termination"
+        fuser -k -TERM "$VIDEO_DEV" 2>/dev/null || true
+        sleep 2
+        
+        if fuser "$VIDEO_DEV" 2>/dev/null | grep -q '[0-9]'; then
+            log "$VIDEO_DEV STILL BUSY -- FORCE KILL"
+            fuser -k -9 "$VIDEO_DEV" 2>/dev/null || true
+            sleep 1
+        else
+            log "Camera released gracefully"
+        fi
+    fi
+    
+    CMD="$BIN -i \"input_uvc.so -d $VIDEO_DEV -r $RESOLUTION -f $FPS\" -o \"output_http.so -p $PORT -w $WWW_DIR\""
+    log "Launching: $CMD"
+    
+    procd_open_instance
+    procd_set_param pidfile /var/run/mjpg_streamer.pid
+    procd_set_param env LD_LIBRARY_PATH="$LD_LIBRARY_PATH"
+    procd_set_param command \
+        $BIN \
+        -i "input_uvc.so -d $VIDEO_DEV -r $RESOLUTION -f $FPS" \
+        -o "output_http.so -p $PORT -w $WWW_DIR"
+    procd_set_param file "$VIDEO_DEV"
+    procd_set_param respawn 3600 5 5
+    procd_set_param stdout 1
+    procd_set_param stderr 1
+    procd_close_instance
+    log "mjpg_streamer handed off to procd (respawn enabled)"
+    
+    if [ "$is_auto_restart" -eq 0 ]; then
+        setup_auto_restart
+    fi
+    
+    rm -f "$AUTO_RESTART_FLAG"
+}
+
+stop_service() {
+    local is_auto_restart=0
+    [ -f "$AUTO_RESTART_FLAG" ] && is_auto_restart=1
+    
+    log "Stopping mjpg_streamer"
+    
+    if [ "$is_auto_restart" -eq 0 ]; then
+        remove_auto_restart
+    fi
+}
+
+restart_service_only() {
+    log "=== mjpg_streamer auto-restart triggered ==="
+    touch "$AUTO_RESTART_FLAG"
+    /etc/init.d/mjpg_streamer restart
+}
+
+status() {
+    if pidof mjpg_streamer >/dev/null; then
+        echo "running";  logger -t "$TAG" "queried status: running"
+        echo "[$(tstamp)] Status queried: running" >> "$DEDICATED_LOG"
+        echo "PID: $(pidof mjpg_streamer)"
+        
+        local cam_users=$(fuser "$VIDEO_DEV" 2>/dev/null)
+        [ -n "$cam_users" ] && echo "Camera users: $cam_users"
+        
+        if crontab -l 2>/dev/null | grep -q "$CRON_COMMENT"; then
+            echo "auto-restart: enabled ($RESTART_INTERVAL min intervals)"
+        else
+            echo "auto-restart: disabled"
+        fi
+        
+        if [ -f "$DEDICATED_LOG" ]; then
+            echo "dedicated log: $DEDICATED_LOG ($(stat -c%s "$DEDICATED_LOG" 2>/dev/null || echo 0) bytes)"
+        fi
+    else
+        echo "stopped"; logger -t "$TAG" "queried status: stopped"
+        echo "[$(tstamp)] Status queried: stopped" >> "$DEDICATED_LOG"
+    fi
+}
