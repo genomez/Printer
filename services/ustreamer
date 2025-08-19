@@ -1,0 +1,165 @@
+#!/bin/sh /etc/rc.common
+# Tunables
+VIDEO_DEV="/dev/video0"
+RESOLUTION="1920x1080"
+FPS="30"
+PORT="8080"
+BIN="/usr/local/bin/ustreamer"
+RESTART_INTERVAL="30"
+DEDICATED_LOG="/var/log/ustreamer.log"
+
+START=99
+STOP=10
+USE_PROCD=1
+TAG="ustreamer"
+CRON_COMMENT="# ustreamer auto-restart"
+AUTO_RESTART_FLAG="/tmp/.ustreamer_auto_restart"
+CAMERA_SCALING_WORKAROUND=0
+
+tstamp() { TZ=PST8PDT date '+%Y-%m-%d %I:%M:%S %p %Z'; }
+log() {
+    local msg="[$(tstamp)] $*"
+    echo "$msg"
+    logger -t "$TAG" "$*"
+    echo "$msg" >> "$DEDICATED_LOG"
+
+    # Rotate 1 MiB
+    if [ -f "$DEDICATED_LOG" ] && [ "$(stat -c%s "$DEDICATED_LOG" 2>/dev/null || echo 0)" -gt "1048576" ]; then
+        mv "$DEDICATED_LOG" "${DEDICATED_LOG}.old"
+        echo "[$(tstamp)] Log rotated due to size limit" > "$DEDICATED_LOG"
+    fi
+}
+
+setup_auto_restart() {
+    if [ "$RESTART_INTERVAL" -gt 0 ] 2>/dev/null; then
+        if ! crontab -l 2>/dev/null | grep -q "$CRON_COMMENT"; then
+            log "Setting up auto-restart every $RESTART_INTERVAL minutes"
+            {
+                crontab -l 2>/dev/null
+                echo "*/$RESTART_INTERVAL * * * * /etc/init.d/ustreamer restart_service_only $CRON_COMMENT"
+            } | crontab -
+            log "Auto-restart scheduled every $RESTART_INTERVAL minutes"
+        else
+            log "Auto-restart already configured ($RESTART_INTERVAL min intervals)"
+        fi
+    else
+        log "Auto-restart disabled (RESTART_INTERVAL=$RESTART_INTERVAL)"
+    fi
+}
+
+remove_auto_restart() {
+    if crontab -l 2>/dev/null | grep -q "$CRON_COMMENT"; then
+        crontab -l 2>/dev/null | grep -v "$CRON_COMMENT" | crontab -
+        log "Auto-restart cron job removed"
+    fi
+}
+
+cameraScalingWorkaround() {
+    log "starting webrtc_local and cam_app)..."
+
+    local webrtc_pid=""
+    local cam_pid=""
+
+    # Start webrtc_local if it exists and isn't already running
+    if [ -f "/usr/bin/webrtc_local.disabled" ] && ! pidof webrtc_local >/dev/null; then
+        log "Starting webrtc_local from backup..."
+        cp "/usr/bin/webrtc_local.disabled" "/tmp/webrtc_local_temp"
+        chmod +x "/tmp/webrtc_local_temp"
+        /tmp/webrtc_local_temp >/dev/null 2>&1 &
+        webrtc_pid=$!
+    fi
+
+    # Start cam_app if it exists and isn't already running
+    if [ -f "/usr/bin/cam_app.backup" ] && ! pidof cam_app >/dev/null; then
+        log "Starting cam_app from backup..."
+        cp "/usr/bin/cam_app.backup" "/tmp/cam_app_temp"
+        chmod +x "/tmp/cam_app_temp"
+        /tmp/cam_app_temp >/dev/null 2>&1 &
+        cam_pid=$!
+    fi
+
+    # Let both run briefly, then kill them forcefully
+    if [ -n "$webrtc_pid" ] || [ -n "$cam_pid" ]; then
+        log "Letting services run for 2 seconds..."
+        sleep 2
+
+        if [ -n "$webrtc_pid" ]; then
+            log "Force killing webrtc_local (PID: $webrtc_pid)"
+            kill -9 "$webrtc_pid" 2>/dev/null || true
+            rm -f "/tmp/webrtc_local_temp"
+        fi
+    fi
+}
+
+start_service() {
+    local is_auto_restart=0
+    [ -f "$AUTO_RESTART_FLAG" ] && is_auto_restart=1
+    
+    if [ "$is_auto_restart" -eq 1 ]; then
+        log "=== ustreamer auto-restart requested ==="
+    else
+        log "=== ustreamer start requested ==="
+    fi
+    
+    mkdir -p "$(dirname "$DEDICATED_LOG")"
+    
+    for i in $(seq 1 30); do
+        [ -x "$BIN" ] && [ -c "$VIDEO_DEV" ] && break
+        if [ ! -x "$BIN" ]; then
+            log "Waiting for $BIN ($i/30)..."
+        fi
+        if [ ! -c "$VIDEO_DEV" ]; then
+            log "Waiting for device $VIDEO_DEV ($i/30)..."
+        fi
+        sleep 1
+    done
+    [ -x "$BIN" ] || { log "FATAL: $BIN not found"; return 1; }
+    
+    [ -c "$VIDEO_DEV" ] || { log "FATAL: $VIDEO_DEV missing"; return 1; }
+    
+    if [ "${CAMERA_SCALING_WORKAROUND:-0}" -ne 0 ]; then
+        cameraScalingWorkaround
+    fi
+    
+    if fuser "$VIDEO_DEV" 2>/dev/null | grep -q '[0-9]'; then
+        log "$VIDEO_DEV busy -- force killing all processes"
+        fuser -k -9 /dev/video0 2>/dev/null || true
+    fi
+    
+    # ustreamer command with similar functionality to mjpg_streamer
+    CMD="$BIN --device=$VIDEO_DEV --resolution=$RESOLUTION --desired-fps=$FPS --format=mjpeg --port=$PORT --host=0.0.0.0 --max-stream-clients 2"
+    log "Launching: $CMD"
+    
+    procd_open_instance
+    procd_set_param pidfile /var/run/ustreamer.pid
+    procd_set_param command sh -c "$CMD >> $DEDICATED_LOG 2>&1"
+    procd_set_param file "$VIDEO_DEV"
+    procd_set_param respawn 3600 5 5
+    procd_close_instance
+    log "ustreamer handed off to procd (respawn enabled)"
+    
+    if [ "$is_auto_restart" -eq 0 ]; then
+        setup_auto_restart
+    fi
+    
+    rm -f "$AUTO_RESTART_FLAG"
+}
+
+stop_service() {
+    local is_auto_restart=0
+    [ -f "$AUTO_RESTART_FLAG" ] && is_auto_restart=1
+    
+    log "Stopping ustreamer"
+    
+    if [ "$is_auto_restart" -eq 0 ]; then
+        remove_auto_restart
+    fi
+}
+
+restart_service_only() {
+    log "=== ustreamer auto-restart triggered ==="
+    touch "$AUTO_RESTART_FLAG"
+    /etc/init.d/ustreamer restart
+}
+
+
