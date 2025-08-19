@@ -1,0 +1,69 @@
+#!/bin/sh /etc/rc.common
+START=99
+STOP=10
+PIDFILE="/var/run/cleanup_printer_backups.pid"
+LOGFILE="/tmp/cleanup_printer_backups.log"
+CONFIG_DIR="/mnt/UDISK/printer_data/config"
+KEEP_COUNT=2
+EXTRA_COMMANDS="run status"
+EXTRA_HELP="    run     Execute cleanup now
+    status  Show recent log entries"
+clean_backups() {
+    echo "$(date): Starting cleanup" >> "$LOGFILE"
+    
+    if [ ! -d "$CONFIG_DIR" ]; then
+        echo "$(date): ERROR - $CONFIG_DIR not found" >> "$LOGFILE"
+        return 1
+    fi
+    
+    # Find old backup files to delete (keep newest $KEEP_COUNT)
+    cd "$CONFIG_DIR" || return 1
+    old_files=$(ls -1t printer-*.cfg 2>/dev/null | tail -n +$((KEEP_COUNT + 1)))
+    
+    if [ -z "$old_files" ]; then
+        echo "$(date): No old backups to delete" >> "$LOGFILE"
+    else
+        echo "$old_files" | while read -r file; do
+            rm -f "$file" && echo "$(date): Deleted $file" >> "$LOGFILE"
+        done
+    fi
+    
+    echo "$(date): Cleanup finished" >> "$LOGFILE"
+}
+start() {
+    # Create PID file for service tracking
+    echo $$ > "$PIDFILE"
+    
+    # Wait for USB mount (up to 30 seconds), then do one-time cleanup
+    echo "$(date): Service started - waiting for $CONFIG_DIR..." >> "$LOGFILE"
+    
+    for i in $(seq 1 30); do
+        if [ -d "$CONFIG_DIR" ]; then
+            clean_backups
+            echo "$(date): Service completed successfully" >> "$LOGFILE"
+            rm -f "$PIDFILE"
+            return 0
+        fi
+        sleep 1
+    done
+    
+    echo "$(date): ERROR - $CONFIG_DIR not available after 30 seconds" >> "$LOGFILE"
+    rm -f "$PIDFILE"
+    return 1
+}
+stop() {
+    echo "$(date): Service stop called" >> "$LOGFILE"
+    rm -f "$PIDFILE"
+    return 0
+}
+run() {
+    clean_backups
+}
+status() {
+    if [ -f "$LOGFILE" ]; then
+        echo "Recent log entries:"
+        tail -n 10 "$LOGFILE"
+    else
+        echo "No log file found at $LOGFILE"
+    fi
+}
