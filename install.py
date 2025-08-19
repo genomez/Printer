@@ -107,12 +107,41 @@ class PrinterInstaller:
             
         # Make it executable and run it
         os.chmod(script_path, 0o755)
-        result = self.run_command(f"sh '{script_path}'")
-        if result and result.returncode == 0:
-            self.log("mjpg_streamer installation completed successfully")
+        
+        if self.dry_run:
+            self.log("Would run: sh 'mjpg_streamer_install.sh'")
             return True
-        else:
-            self.log("mjpg_streamer installation failed", "ERROR")
+            
+        # Run the script with live output
+        self.log("Running mjpg_streamer installation script...")
+        try:
+            # Use subprocess.Popen for real-time output
+            process = subprocess.Popen(
+                f"sh '{script_path}'", 
+                shell=True, 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+                bufsize=1
+            )
+            
+            # Stream output in real-time
+            for line in iter(process.stdout.readline, ''):
+                if line:
+                    print(line.rstrip())
+                    
+            process.stdout.close()
+            return_code = process.wait()
+            
+            if return_code == 0:
+                self.log("mjpg_streamer installation completed successfully")
+                return True
+            else:
+                self.log(f"mjpg_streamer installation failed with return code {return_code}", "ERROR")
+                return False
+                
+        except Exception as e:
+            self.log(f"Failed to run mjpg_streamer script: {e}", "ERROR")
             return False
             
     def install_kamp(self):
