@@ -150,7 +150,7 @@ start_service() {
     fi
     
     # ustreamer command with similar functionality to mjpg_streamer
-    CMD="$BIN --device=$VIDEO_DEV --resolution=$RESOLUTION --desired-fps=$FPS --port=$PORT --host=0.0.0.0"
+    CMD="$BIN --device=$VIDEO_DEV --resolution=$RESOLUTION --desired-fps=$FPS --format=mjpeg --port=$PORT --host=0.0.0.0"
     log "Launching: $CMD"
     
     procd_open_instance
