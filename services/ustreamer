@@ -14,6 +14,7 @@ USE_PROCD=1
 TAG="ustreamer"
 CRON_COMMENT="# ustreamer auto-restart"
 AUTO_RESTART_FLAG="/tmp/.ustreamer_auto_restart"
+CAMERA_SCALING_WORKAROUND=0
 
 tstamp() { TZ=PST8PDT date '+%Y-%m-%d %I:%M:%S %p %Z'; }
 log() {
@@ -53,6 +54,43 @@ remove_auto_restart() {
     fi
 }
 
+cameraScalingWorkaround() {
+    log "starting webrtc_local and cam_app)..."
+
+    local webrtc_pid=""
+    local cam_pid=""
+
+    # Start webrtc_local if it exists and isn't already running
+    if [ -f "/usr/bin/webrtc_local.disabled" ] && ! pidof webrtc_local >/dev/null; then
+        log "Starting webrtc_local from backup..."
+        cp "/usr/bin/webrtc_local.disabled" "/tmp/webrtc_local_temp"
+        chmod +x "/tmp/webrtc_local_temp"
+        /tmp/webrtc_local_temp >/dev/null 2>&1 &
+        webrtc_pid=$!
+    fi
+
+    # Start cam_app if it exists and isn't already running
+    if [ -f "/usr/bin/cam_app.backup" ] && ! pidof cam_app >/dev/null; then
+        log "Starting cam_app from backup..."
+        cp "/usr/bin/cam_app.backup" "/tmp/cam_app_temp"
+        chmod +x "/tmp/cam_app_temp"
+        /tmp/cam_app_temp >/dev/null 2>&1 &
+        cam_pid=$!
+    fi
+
+    # Let both run briefly, then kill them forcefully
+    if [ -n "$webrtc_pid" ] || [ -n "$cam_pid" ]; then
+        log "Letting services run for 2 seconds..."
+        sleep 2
+
+        if [ -n "$webrtc_pid" ]; then
+            log "Force killing webrtc_local (PID: $webrtc_pid)"
+            kill -9 "$webrtc_pid" 2>/dev/null || true
+            rm -f "/tmp/webrtc_local_temp"
+        fi
+    fi
+}
+
 start_service() {
     local is_auto_restart=0
     [ -f "$AUTO_RESTART_FLAG" ] && is_auto_restart=1
@@ -79,41 +117,8 @@ start_service() {
     
     [ -c "$VIDEO_DEV" ] || { log "FATAL: $VIDEO_DEV missing"; return 1; }
     
-    log "starting webrtc_local and cam_app)..."
-    
-    local webrtc_pid=""
-    local cam_pid=""
-    
-    # Start webrtc_local if it exists and isn't already running
-    if [ -f "/usr/bin/webrtc_local.disabled" ] && ! pidof webrtc_local >/dev/null; then
-        log "Starting webrtc_local from backup..."
-        cp "/usr/bin/webrtc_local.disabled" "/tmp/webrtc_local_temp"
-        chmod +x "/tmp/webrtc_local_temp"
-        /tmp/webrtc_local_temp >/dev/null 2>&1 &
-        webrtc_pid=$!
-    fi
-    
-    # Start cam_app if it exists and isn't already running
-    if [ -f "/usr/bin/cam_app.backup" ] && ! pidof cam_app >/dev/null; then
-        log "Starting cam_app from backup..."
-        cp "/usr/bin/cam_app.backup" "/tmp/cam_app_temp"
-        chmod +x "/tmp/cam_app_temp"
-        /tmp/cam_app_temp >/dev/null 2>&1 &
-        cam_pid=$!
-    fi
-    
-    # Let both run for 1 second, then kill them forcefully
-    if [ -n "$webrtc_pid" ] || [ -n "$cam_pid" ]; then
-        log "Letting services run for 2 seconds..."
-        sleep 2
-        
-        # Force kill webrtc
-        if [ -n "$webrtc_pid" ]; then
-            log "Force killing webrtc_local (PID: $webrtc_pid)"
-            kill -9 "$webrtc_pid" 2>/dev/null || true
-            rm -f "/tmp/webrtc_local_temp"
-        fi
-
+    if [ "${CAMERA_SCALING_WORKAROUND:-0}" -ne 0 ]; then
+        cameraScalingWorkaround
     fi
     
     if fuser "$VIDEO_DEV" 2>/dev/null | grep -q '[0-9]'; then
