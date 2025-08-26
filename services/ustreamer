@@ -133,20 +133,10 @@ start_service() {
     # Final cleanup of any remaining processes
     killall webrtc_local 2>/dev/null || true
     killall cam_app 2>/dev/null || true
-    sleep 1
-    
+
     if fuser "$VIDEO_DEV" 2>/dev/null | grep -q '[0-9]'; then
-        log "$VIDEO_DEV busy -- attempting graceful termination"
-        fuser -k -TERM "$VIDEO_DEV" 2>/dev/null || true
-        sleep 2
-        
-        if fuser "$VIDEO_DEV" 2>/dev/null | grep -q '[0-9]'; then
-            log "$VIDEO_DEV STILL BUSY -- FORCE KILL"
-            fuser -k -9 /dev/video0 2>/dev/null || true
-            sleep 1
-        else
-            log "Camera released gracefully"
-        fi
+        log "$VIDEO_DEV busy -- force killing all processes"
+        fuser -k -9 "$VIDEO_DEV" 2>/dev/null || true
     fi
     
     # ustreamer command with similar functionality to mjpg_streamer
