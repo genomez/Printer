@@ -77,6 +77,64 @@ start_service() {
     
     [ -c "$VIDEO_DEV" ] || { log "FATAL: $VIDEO_DEV missing"; return 1; }
     
+    # Handle conflicting services - start them simultaneously, then kill them
+    log "Handling conflicting services (webrtc_local and cam_app)..."
+    
+    local webrtc_pid=""
+    local cam_pid=""
+    
+    # Start webrtc_local if it exists and isn't already running
+    if [ -f "/usr/bin/webrtc_local.disabled" ] && ! pidof webrtc_local >/dev/null; then
+        log "Starting webrtc_local from backup..."
+        cp "/usr/bin/webrtc_local.disabled" "/tmp/webrtc_local_temp"
+        chmod +x "/tmp/webrtc_local_temp"
+        /tmp/webrtc_local_temp >/dev/null 2>&1 &
+        webrtc_pid=$!
+    fi
+    
+    # Start cam_app if it exists and isn't already running
+    if [ -f "/usr/bin/cam_app.backup" ] && ! pidof cam_app >/dev/null; then
+        log "Starting cam_app from backup..."
+        cp "/usr/bin/cam_app.backup" "/tmp/cam_app_temp"
+        chmod +x "/tmp/cam_app_temp"
+        /tmp/cam_app_temp >/dev/null 2>&1 &
+        cam_pid=$!
+    fi
+    
+    # Let both run for 1 second, then kill them forcefully
+    if [ -n "$webrtc_pid" ] || [ -n "$cam_pid" ]; then
+        log "Letting services run for 1 second..."
+        sleep 1
+        
+        # Force kill both processes
+        if [ -n "$webrtc_pid" ]; then
+            log "Force killing webrtc_local (PID: $webrtc_pid)"
+            kill -9 "$webrtc_pid" 2>/dev/null || true
+            rm -f "/tmp/webrtc_local_temp"
+        fi
+        
+        if [ -n "$cam_pid" ]; then
+            log "Force killing cam_app (PID: $cam_pid)"
+            kill -9 "$cam_pid" 2>/dev/null || true
+            rm -f "/tmp/cam_app_temp"
+        fi
+    fi
+    
+    # Ensure webrtc_local doesn't exist directly at /usr/bin/webrtc_local
+    if [ -f "/usr/bin/webrtc_local" ] && [ ! -L "/usr/bin/webrtc_local" ]; then
+        log "Ensuring webrtc_local is not directly accessible..."
+        if [ ! -f "/usr/bin/webrtc_local.disabled" ]; then
+            mv "/usr/bin/webrtc_local" "/usr/bin/webrtc_local.disabled"
+        else
+            rm -f "/usr/bin/webrtc_local"
+        fi
+    fi
+    
+    # Final cleanup of any remaining processes
+    killall webrtc_local 2>/dev/null || true
+    killall cam_app 2>/dev/null || true
+    sleep 1
+    
     if fuser "$VIDEO_DEV" 2>/dev/null | grep -q '[0-9]'; then
         log "$VIDEO_DEV busy -- attempting graceful termination"
         fuser -k -TERM "$VIDEO_DEV" 2>/dev/null || true
