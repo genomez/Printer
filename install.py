@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-"""
-3D Printer Automated Installer
-This script installs and configures various components for a 3D printer running OpenWrt.
-Run this script directly on the printer after cloning the repository.
-"""
 
 import os
 import sys
@@ -47,7 +42,7 @@ class PrinterInstaller:
             return None
             
     def check_file_exists(self, path):
-        """Check if a file exists"""
+        """Check if a file or path exists"""
         return os.path.exists(path)
         
     def check_dir_exists(self, path):
@@ -92,42 +87,25 @@ class PrinterInstaller:
             self.log(f"Failed to copy directory {src}: {e}", "ERROR")
             return False
             
-    def install_mjpg_streamer(self):
-        """Install mjpg_streamer using the existing script"""
-        self.log("Installing mjpg_streamer...")
+    def install_ustreamer(self):
+        """Install ustreamer using the existing script"""
+        self.log("Installing ustreamer...")
         
-        script_path = REPO_ROOT / "scripts" / "mjpg_streamer_install.sh"
-        if not self.check_file_exists(script_path):
-            self.log("mjpg_streamer install script not found", "ERROR")
+        installer_path = REPO_ROOT / "scripts" / "ustreamer_install.py"
+        if not self.check_file_exists(installer_path):
+            self.log("ustreamer install script not found", "ERROR")
             return False
             
         if self.dry_run:
-            self.log("Would run: sh 'mjpg_streamer'")
-            return True
-            
-        # Prefer Python implementation if available; fallback to shell script
-        py_script_path = REPO_ROOT / "scripts" / "mjpg_streamer_install.py"
-        shell_script_path = REPO_ROOT / "scripts" / "mjpg_streamer_install.sh"
-
-        if self.dry_run:
-            if py_script_path.exists():
-                self.log("Would run: python3 'scripts/mjpg_streamer_install.py'")
-            else:
-                self.log("Would run: sh 'scripts/mjpg_streamer_install.sh'")
+            self.log("Would run: python3 'scripts/ustreamer_install.py'")
             return True
 
         # Execute with optional live output only when verbose
         try:
-            if py_script_path.exists():
-                command = f"python3 '{py_script_path}'"
-            else:
-                # Ensure shell script is executable
-                if shell_script_path.exists():
-                    os.chmod(shell_script_path, 0o755)
-                command = f"sh '{shell_script_path}'"
+            command = f"python3 '{installer_path}'"
 
             if self.verbose:
-                self.log("Running mjpg_streamer installer with live output...")
+                self.log("Running ustreamer installer with live output...")
                 process = subprocess.Popen(
                     command,
                     shell=True,
@@ -146,13 +124,13 @@ class PrinterInstaller:
                 return_code = result.returncode
 
             if return_code == 0:
-                self.log("mjpg_streamer installation completed successfully")
+                self.log("ustreamer installation completed successfully")
                 return True
             else:
-                self.log(f"mjpg_streamer installation failed with return code {return_code}", "ERROR")
+                self.log(f"ustreamer installation failed with return code {return_code}", "ERROR")
                 return False
         except Exception as e:
-            self.log(f"Failed to run mjpg_streamer installer: {e}", "ERROR")
+            self.log(f"Failed to run ustreamer installer: {e}", "ERROR")
             return False
             
     def install_kamp(self):
@@ -187,7 +165,6 @@ class PrinterInstaller:
             if self.dry_run:
                 self.log("Would add '[include KAMP_Settings.cfg]' to printer.cfg")
             else:
-                # Find a good place to insert the include line (after other includes)
                 lines = content.split('\n')
                 include_lines = []
                 for i, line in enumerate(lines):
@@ -198,13 +175,17 @@ class PrinterInstaller:
                     # Insert after the last include line
                     insert_pos = include_lines[-1] + 1
                     lines.insert(insert_pos, '[include KAMP_Settings.cfg]')
-                    
-                    # Write back to file
-                    with open(printer_cfg, 'w') as f:
-                        f.write('\n'.join(lines))
-                    self.log("Added KAMP_Settings.cfg include to printer.cfg")
                 else:
-                    self.log("Could not determine where to insert KAMP include line", "WARNING")
+                    # If no include lines found, append at the end
+                    # Ensure file ends with a newline before appending
+                    if lines and lines[-1] != '':
+                        lines.append('')
+                    lines.append('[include KAMP_Settings.cfg]')
+                    
+                # Write back to file
+                with open(printer_cfg, 'w') as f:
+                    f.write('\n'.join(lines))
+                self.log("Added KAMP_Settings.cfg include to printer.cfg")
                     
         return True
         
@@ -237,7 +218,11 @@ class PrinterInstaller:
             
         # Make it executable
         if not self.dry_run:
-            os.chmod(service_dst, 0o755)
+            try:
+                os.chmod(service_dst, 0o755)
+            except Exception as e:
+                self.log(f"Failed to chmod service file: {e}", "ERROR")
+                return False
             
         # Check if service is already in moonraker.asvc
         if not self.check_file_exists(MOONRAKER_ASVC_FILE):
@@ -254,9 +239,15 @@ class PrinterInstaller:
             if self.dry_run:
                 self.log("Would add 'cleanup_printer_backups' to moonraker.asvc")
             else:
-                with open(MOONRAKER_ASVC_FILE, 'a') as f:
-                    f.write('\ncleanup_printer_backups\n')
-                self.log("Added cleanup_printer_backups to moonraker.asvc")
+                try:
+                    with open(MOONRAKER_ASVC_FILE, 'a') as f:
+                        if not content.endswith('\n'):
+                            f.write('\n')
+                        f.write('cleanup_printer_backups\n')
+                    self.log("Added cleanup_printer_backups to moonraker.asvc")
+                except Exception as e:
+                    self.log(f"Failed to update moonraker.asvc: {e}", "ERROR")
+                    return False
                 
         return True
         
@@ -282,8 +273,12 @@ class PrinterInstaller:
             return False
             
         # Check if the modification is already applied
-        with open(bed_mesh_path, 'r') as f:
-            content = f.read()
+        try:
+            with open(bed_mesh_path, 'r') as f:
+                content = f.read()
+        except Exception as e:
+            self.log(f"Failed to read bed_mesh.py: {e}", "ERROR")
+            return False
             
         if 'minval=1.' in content:
             self.log("bed_mesh.py already has minval=1. (modification not needed)")
@@ -304,67 +299,141 @@ class PrinterInstaller:
             self.log("Failed to modify bed_mesh.py", "ERROR")
             return False
             
-    def verify_installation(self):
-        """Verify that all components were installed correctly"""
+    def verify_installation(self, components=None):
+        """Verify that only the requested components were installed correctly"""
+        # Default to all components if none provided
+        if components is None:
+            components = ['ustreamer', 'kamp', 'overrides', 'cleanup', 'resonance', 'bed_mesh']
+
         self.log("Verifying installation...")
-        
-        checks = [
-            ("KAMP directory", f"{CONFIG_DIR}/KAMP"),
-            ("KAMP_Settings.cfg", f"{CONFIG_DIR}/KAMP_Settings.cfg"),
-            ("overrides.cfg", f"{CUSTOM_CONFIG_DIR}/overrides.cfg"),
-            ("cleanup service", f"{INIT_D_DIR}/cleanup_printer_backups"),
-            ("resonance_tester.py", f"{KLIPPER_EXTRAS_DIR}/resonance_tester.py"),
-        ]
-        
         all_good = True
-        for name, path in checks:
-            if self.check_file_exists(path) or self.check_dir_exists(path):
-                self.log(f"✓ {name} verified")
+
+        # kamp verification
+        if 'kamp' in components:
+            kamp_dir = Path(CONFIG_DIR) / "KAMP"
+            kamp_cfg = Path(CONFIG_DIR) / "KAMP_Settings.cfg"
+            if self.check_dir_exists(kamp_dir):
+                self.log("✓ KAMP directory verified")
             else:
-                self.log(f"✗ {name} not found", "ERROR")
+                self.log("✗ KAMP directory not found", "ERROR")
                 all_good = False
-                
-        # Check moonraker.asvc
-        if self.check_file_exists(MOONRAKER_ASVC_FILE):
-            with open(MOONRAKER_ASVC_FILE, 'r') as f:
-                content = f.read()
-            if 'cleanup_printer_backups' in content:
-                self.log("✓ cleanup_printer_backups in moonraker.asvc")
+
+            if self.check_file_exists(kamp_cfg):
+                self.log("✓ KAMP_Settings.cfg verified")
             else:
-                self.log("✗ cleanup_printer_backups not in moonraker.asvc", "ERROR")
+                self.log("✗ KAMP_Settings.cfg not found", "ERROR")
                 all_good = False
-        else:
-            self.log("✗ moonraker.asvc not found", "ERROR")
-            all_good = False
-            
-        # Check printer.cfg include
-        printer_cfg = Path(CONFIG_DIR) / "printer.cfg"
-        if self.check_file_exists(printer_cfg):
-            with open(printer_cfg, 'r') as f:
-                content = f.read()
-            if '[include KAMP_Settings.cfg]' in content:
-                self.log("✓ KAMP_Settings.cfg included in printer.cfg")
+
+            printer_cfg = Path(CONFIG_DIR) / "printer.cfg"
+            if self.check_file_exists(printer_cfg):
+                try:
+                    with open(printer_cfg, 'r') as f:
+                        content = f.read()
+                    if '[include KAMP_Settings.cfg]' in content:
+                        self.log("✓ KAMP_Settings.cfg included in printer.cfg")
+                    else:
+                        self.log("✗ KAMP_Settings.cfg not included in printer.cfg", "ERROR")
+                        all_good = False
+                except Exception as e:
+                    self.log(f"Failed to read printer.cfg: {e}", "ERROR")
+                    all_good = False
             else:
-                self.log("✗ KAMP_Settings.cfg not included in printer.cfg", "ERROR")
+                self.log("✗ printer.cfg not found", "ERROR")
                 all_good = False
-        else:
-            self.log("✗ printer.cfg not found", "ERROR")
-            all_good = False
-            
+
+        # overrides verification
+        if 'overrides' in components:
+            overrides_path = Path(CUSTOM_CONFIG_DIR) / "overrides.cfg"
+            if self.check_file_exists(overrides_path):
+                self.log("✓ overrides.cfg verified")
+            else:
+                self.log("✗ overrides.cfg not found", "ERROR")
+                all_good = False
+
+        # cleanup service verification
+        if 'cleanup' in components:
+            service_path = Path(INIT_D_DIR) / "cleanup_printer_backups"
+            if self.check_file_exists(service_path):
+                self.log("✓ cleanup service file verified")
+            else:
+                self.log("✗ cleanup service file not found", "ERROR")
+                all_good = False
+
+            if self.check_file_exists(MOONRAKER_ASVC_FILE):
+                try:
+                    with open(MOONRAKER_ASVC_FILE, 'r') as f:
+                        content = f.read()
+                    if 'cleanup_printer_backups' in content:
+                        self.log("✓ cleanup_printer_backups in moonraker.asvc")
+                    else:
+                        self.log("✗ cleanup_printer_backups not in moonraker.asvc", "ERROR")
+                        all_good = False
+                except Exception as e:
+                    self.log(f"Failed to read moonraker.asvc: {e}", "ERROR")
+                    all_good = False
+            else:
+                self.log("✗ moonraker.asvc not found", "ERROR")
+                all_good = False
+
+        # resonance tester verification
+        if 'resonance' in components:
+            resonance_dst = Path(KLIPPER_EXTRAS_DIR) / "resonance_tester.py"
+            if self.check_file_exists(resonance_dst):
+                self.log("✓ resonance_tester.py verified")
+            else:
+                self.log("✗ resonance_tester.py not found", "ERROR")
+                all_good = False
+
+        # bed_mesh modification verification
+        if 'bed_mesh' in components:
+            bed_mesh_path = Path(KLIPPER_EXTRAS_DIR) / "bed_mesh.py"
+            if self.check_file_exists(bed_mesh_path):
+                try:
+                    with open(bed_mesh_path, 'r') as f:
+                        content = f.read()
+                    if 'minval=1.' in content:
+                        self.log("✓ bed_mesh.py modification verified (minval=1.)")
+                    else:
+                        self.log("✗ bed_mesh.py modification not found (minval=1.)", "ERROR")
+                        all_good = False
+                except Exception as e:
+                    self.log(f"Failed to read bed_mesh.py: {e}", "ERROR")
+                    all_good = False
+            else:
+                self.log("✗ bed_mesh.py not found", "ERROR")
+                all_good = False
+
+        # ustreamer verification (best-effort)
+        if 'ustreamer' in components:
+            candidates = [
+                shutil.which("ustreamer"),
+                "/usr/local/bin/ustreamer",
+                "/usr/bin/ustreamer",
+                "/bin/ustreamer",
+                "/usr/sbin/ustreamer",
+                "/sbin/ustreamer",
+            ]
+            found = any(self.check_file_exists(p) for p in candidates if p)
+            if found:
+                self.log("✓ ustreamer binary found")
+            else:
+                self.log("✗ ustreamer binary not found in PATH or standard locations", "ERROR")
+                all_good = False
+
         return all_good
         
     def run_installation(self, components=None):
         """Run the complete installation"""
         if components is None:
-            components = ['mjpg_streamer', 'kamp', 'overrides', 'cleanup', 'resonance', 'bed_mesh']
+            components = ['ustreamer', 'kamp', 'overrides', 'cleanup', 'resonance', 'bed_mesh']
             
         self.log("Starting 3D Printer Installation...")
         self.log(f"Components to install: {', '.join(components)}")
         
         results = {}
         
-        if 'mjpg_streamer' in components:
-            results['mjpg_streamer'] = self.install_mjpg_streamer()
+        if 'ustreamer' in components:
+            results['ustreamer'] = self.install_ustreamer()
             
         if 'kamp' in components:
             results['kamp'] = self.install_kamp()
@@ -381,9 +450,9 @@ class PrinterInstaller:
         if 'bed_mesh' in components:
             results['bed_mesh'] = self.modify_bed_mesh()
             
-        # Verify installation
+        # Verify only the requested components
         if not self.dry_run:
-            results['verification'] = self.verify_installation()
+            results['verification'] = self.verify_installation(components=components)
             
         # Print summary
         self.log("\n" + "="*50)
@@ -407,7 +476,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Show what would be done without actually doing it")
     parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed output")
     parser.add_argument("--components", nargs="+", 
-                       choices=['mjpg_streamer', 'kamp', 'overrides', 'cleanup', 'resonance', 'bed_mesh'],
+                       choices=['ustreamer', 'kamp', 'overrides', 'cleanup', 'resonance', 'bed_mesh'],
                        help="Specific components to install (default: all)")
     
     args = parser.parse_args()

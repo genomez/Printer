@@ -21,4 +21,4 @@ sudo ./install.sh --verbose
 sudo ./install.sh --components kamp overrides cleanup
 ```
 
-Available components: `mjpg_streamer`, `kamp`, `overrides`, `cleanup`, `resonance`, `bed_mesh`
+Available components: `ustreamer`, `kamp`, `overrides`, `cleanup`, `resonance`, `bed_mesh`
