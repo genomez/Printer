@@ -26,7 +26,7 @@ REPORT_CAMERA_STATUS=""
 REPORT_USTREAMER_PORT="8080"
 REPORT_USTREAMER_RESOLUTION="1920x1080"
 REPORT_USTREAMER_FPS="10"
-REPORT_AUTO_RESTART_INTERVAL="15"
+REPORT_AUTO_RESTART_INTERVAL="30"
 
 
 def log_action(msg: str) -> None:
@@ -411,6 +411,18 @@ def print_final_report() -> None:
             print(f"  {GREEN}✓{NC} ustreamer is running")
         else:
             print(f"  {RED}✗{NC} ustreamer is not running")
+
+    # Always show configuration and URLs, regardless of errors
+    print("")
+    print(f"{YELLOW}Configuration:{NC}")
+    print(f"  • Resolution: {REPORT_USTREAMER_RESOLUTION} @ {REPORT_USTREAMER_FPS} fps")
+    print(f"  • Port: {REPORT_USTREAMER_PORT}")
+    print(f"  • Auto-restart: Every {REPORT_AUTO_RESTART_INTERVAL} minutes")
+
+    print("")
+    print(f"{YELLOW}Access URLs:{NC}")
+    print(f"  • Stream: http://{REPORT_IP}:{REPORT_USTREAMER_PORT}/stream")
+    print(f"  • Snapshot: http://{REPORT_IP}:{REPORT_USTREAMER_PORT}/snapshot")
 
     print("")
     print(f"{YELLOW}Quick Commands:{NC}")

@@ -96,35 +96,25 @@ class PrinterInstaller:
         """Install ustreamer using the existing script"""
         self.log("Installing ustreamer...")
         
-        script_path = REPO_ROOT / "scripts" / "ustreamer_install.sh"
+        script_path = REPO_ROOT / "scripts" / "ustreamer_install.py"
         if not self.check_file_exists(script_path):
             self.log("ustreamer install script not found", "ERROR")
             return False
             
         if self.dry_run:
-            self.log("Would run: sh 'ustreamer'")
+            self.log("Would run: python3 'scripts/ustreamer_install.py'")
             return True
             
-        # Prefer Python implementation if available; fallback to shell script
+        # Use Python installer (printer has Python 3)
         py_script_path = REPO_ROOT / "scripts" / "ustreamer_install.py"
-        shell_script_path = REPO_ROOT / "scripts" / "ustreamer_install.sh"
 
         if self.dry_run:
-            if py_script_path.exists():
-                self.log("Would run: python3 'scripts/ustreamer_install.py'")
-            else:
-                self.log("Would run: sh 'scripts/ustreamer_install.sh'")
+            self.log("Would run: python3 'scripts/ustreamer_install.py'")
             return True
 
         # Execute with optional live output only when verbose
         try:
-            if py_script_path.exists():
-                command = f"python3 '{py_script_path}'"
-            else:
-                # Ensure shell script is executable
-                if shell_script_path.exists():
-                    os.chmod(shell_script_path, 0o755)
-                command = f"sh '{shell_script_path}'"
+            command = f"python3 '{py_script_path}'"
 
             if self.verbose:
                 self.log("Running ustreamer installer with live output...")

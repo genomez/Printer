@@ -84,7 +84,7 @@ start_service() {
         
         if fuser "$VIDEO_DEV" 2>/dev/null | grep -q '[0-9]'; then
             log "$VIDEO_DEV STILL BUSY -- FORCE KILL"
-            fuser -k -9 "$VIDEO_DEV" 2>/dev/null || true
+            fuser -k -9 /dev/video0 2>/dev/null || true
             sleep 1
         else
             log "Camera released gracefully"

@@ -14,7 +14,7 @@ The repository has been reorganized into a clean, professional structure:
 ├── install.sh                    # Shell script wrapper (ash compatible)
 ├── README.md                     # Main documentation
 ├── scripts/                      # Installation scripts
-│   └── ustreamer_install.sh # ustreamer installer
+│   └── ustreamer_install.py # ustreamer installer
 ├── configs/                      # Configuration files
 │   ├── KAMP/                    # KAMP configuration files
 │   ├── KAMP_Settings.cfg        # KAMP settings
