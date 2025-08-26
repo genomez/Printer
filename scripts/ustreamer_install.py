@@ -23,10 +23,10 @@ REPORT_IP=""
 REPORT_CAMERAS=""
 REPORT_CAMERA_ACTIONS=""
 REPORT_CAMERA_STATUS=""
-REPORT_MJPG_PORT="8080"
-REPORT_MJPG_RESOLUTION="1920x1080"
-REPORT_MJPG_FPS="10"
-REPORT_AUTO_RESTART_INTERVAL="15"
+REPORT_USTREAMER_PORT="8080"
+REPORT_USTREAMER_RESOLUTION="1920x1080"
+REPORT_USTREAMER_FPS="10"
+REPORT_AUTO_RESTART_INTERVAL="30"
 
 
 def log_action(msg: str) -> None:
@@ -60,34 +60,39 @@ def run_ok(cmd: str) -> bool:
     return True
 
 
-def install_mjpg_streamer() -> None:
+def install_ustreamer() -> None:
     global REPORT_INSTALL_STATUS
-    log_action("Installing mjpg_streamer...")
+    log_action("Installing ustreamer...")
 
     if run_ok("/etc/init.d/cron enable"):
         log_service("cron service enabled")
     else:
         log_error("Failed to enable cron service")
 
-    log_action("Updating package list...")
-    if run_ok("opkg update"):
-        log_action("Installing mjpg_streamer packages...")
-        if run_ok("opkg install mjpg-streamer mjpg-streamer-input-uvc mjpg-streamer-output-http mjpg-streamer-www"):
-            REPORT_INSTALL_STATUS = "mjpg_streamer installed successfully"
+    # Copy ustreamer binary to system
+    repo_root = Path(__file__).resolve().parent.parent
+    binary_src = repo_root / "binaries" / "ustreamer_static_arm32"
+    binary_dst = Path("/usr/local/bin/ustreamer")
+    
+    try:
+        # Create directory if it doesn't exist
+        binary_dst.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Copy binary
+        shutil.copy2(binary_src, binary_dst)
+        os.chmod(binary_dst, 0o755)
+        log_action("Copied ustreamer binary to /usr/local/bin/ustreamer")
+        
+        # Test binary
+        if run_ok("/usr/local/bin/ustreamer --help"):
+            REPORT_INSTALL_STATUS = "ustreamer installed successfully"
         else:
-            log_error("Failed to install mjpg_streamer packages")
-            REPORT_INSTALL_STATUS = "mjpg_streamer installation failed"
-    else:
-        log_error("Failed to update package list")
-        REPORT_INSTALL_STATUS = "Package update failed"
-
-    # Remove old Optware init script if present
-    if Path("/opt/etc/init.d/S99mjpg_streamer").exists():
-        try:
-            Path("/opt/etc/init.d/S99mjpg_streamer").unlink()
-            log_action("Removed old Optware init script")
-        except Exception:
-            pass
+            log_error("ustreamer binary test failed")
+            REPORT_INSTALL_STATUS = "ustreamer installation failed"
+            
+    except Exception as e:
+        log_error(f"Failed to install ustreamer binary: {e}")
+        REPORT_INSTALL_STATUS = "ustreamer installation failed"
 
 
 def backup_and_disable_services() -> None:
@@ -134,19 +139,29 @@ def backup_and_disable_services() -> None:
         except Exception:
             pass
 
+    # Disable old mjpg_streamer if present
+    if Path("/etc/init.d/mjpg_streamer").exists():
+        try:
+            run("/etc/init.d/mjpg_streamer stop")
+            run("/etc/init.d/mjpg_streamer disable")
+            log_action("Stopped and disabled old mjpg_streamer service")
+            log_service("mjpg_streamer service stopped and disabled")
+        except Exception:
+            pass
 
-def create_mjpg_streamer_service() -> None:
-    log_action("Creating mjpg_streamer service...")
+
+def create_ustreamer_service() -> None:
+    log_action("Creating ustreamer service...")
     # Determine repo root from this script location
     repo_root = Path(__file__).resolve().parent.parent
-    src = repo_root / "services" / "mjpg_streamer"
+    src = repo_root / "services" / "ustreamer"
     try:
-        shutil.copyfile(src, "/etc/init.d/mjpg_streamer")
-        os.chmod("/etc/init.d/mjpg_streamer", 0o755)
-        log_action("Created mjpg_streamer init script")
-        log_service(f"mjpg_streamer service created with auto-restart every {REPORT_AUTO_RESTART_INTERVAL} minutes")
+        shutil.copyfile(src, "/etc/init.d/ustreamer")
+        os.chmod("/etc/init.d/ustreamer", 0o755)
+        log_action("Created ustreamer init script")
+        log_service(f"ustreamer service created with auto-restart every {REPORT_AUTO_RESTART_INTERVAL} minutes")
     except Exception:
-        log_error("Failed to create mjpg_streamer init script")
+        log_error("Failed to create ustreamer init script")
 
 
 def configure_services() -> None:
@@ -154,23 +169,23 @@ def configure_services() -> None:
 
     try:
         with open("/mnt/UDISK/printer_data/moonraker.asvc", "a") as f:
-            f.write("\nmjpg_streamer\n")
-        log_action("Registered mjpg_streamer with Moonraker supervisor")
-        log_service("mjpg_streamer registered with Moonraker")
+            f.write("\nustreamer\n")
+        log_action("Registered ustreamer with Moonraker supervisor")
+        log_service("ustreamer registered with Moonraker")
     except Exception:
         log_error("Failed to register with Moonraker")
 
-    if run_ok("/etc/init.d/mjpg_streamer restart"):
-        log_action("Started mjpg_streamer service")
-        log_service("mjpg_streamer service started")
+    if run_ok("/etc/init.d/ustreamer restart"):
+        log_action("Started ustreamer service")
+        log_service("ustreamer service started")
     else:
-        log_error("Failed to start mjpg_streamer service")
+        log_error("Failed to start ustreamer service")
 
-    if run_ok("/etc/init.d/mjpg_streamer enable"):
-        log_action("Enabled mjpg_streamer service")
-        log_service("mjpg_streamer service enabled at boot")
+    if run_ok("/etc/init.d/ustreamer enable"):
+        log_action("Enabled ustreamer service")
+        log_service("ustreamer service enabled at boot")
     else:
-        log_error("Failed to enable mjpg_streamer service")
+        log_error("Failed to enable ustreamer service")
 
 
 def get_ip_address() -> str:
@@ -235,8 +250,8 @@ def extract_camera_name(json_response: str) -> str:
 
 
 def check_camera_configured_correctly(json_response: str, target_ip: str) -> bool:
-    good_stream = f'"stream_url"\s*:\s*"http://{target_ip}:8080/?action=stream"' in json_response
-    good_snap = f'"snapshot_url"\s*:\s*"http://{target_ip}:8080/?action=snapshot"' in json_response
+    good_stream = f'"stream_url"\s*:\s*"http://{target_ip}:8080/stream"' in json_response
+    good_snap = f'"snapshot_url"\s*:\s*"http://{target_ip}:8080/snapshot"' in json_response
     good_service = '"service"\s*:\s*"mjpegstreamer"' in json_response
     return good_stream and good_snap and good_service
 
@@ -268,8 +283,8 @@ def update_camera(ip_address: str, camera_name: str) -> bool:
     payload = {
         "name": camera_name,
         "service": "mjpegstreamer",
-        "stream_url": f"http://{ip_address}:8080/?action=stream",
-        "snapshot_url": f"http://{ip_address}:8080/?action=snapshot",
+        "stream_url": f"http://{ip_address}:8080/stream",
+        "snapshot_url": f"http://{ip_address}:8080/snapshot",
     }
     code = http_post(f"http://{ip_address}:7125/server/webcams/item?name={encoded_name}", payload)
     if code in (200, 201):
@@ -284,8 +299,8 @@ def create_camera(ip_address: str) -> bool:
     payload = {
         "name": "Front",
         "service": "mjpegstreamer",
-        "stream_url": f"http://{ip_address}:8080/?action=stream",
-        "snapshot_url": f"http://{ip_address}:8080/?action=snapshot",
+        "stream_url": f"http://{ip_address}:8080/stream",
+        "snapshot_url": f"http://{ip_address}:8080/snapshot",
     }
     code = http_post(f"http://{ip_address}:7125/server/webcams/item", payload)
     if code in (200, 201):
@@ -342,7 +357,7 @@ def restart_moonraker() -> None:
 def print_final_report() -> None:
     print("")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print("         MJPG STREAMER INSTALLATION COMPLETE")
+    print("         USTREAMER INSTALLATION COMPLETE")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     print("")
 
@@ -355,8 +370,8 @@ def print_final_report() -> None:
                 print(f"    • {line}")
 
         # Service status
-        if run("pidof mjpg_streamer").returncode == 0:
-            p = run("pidof mjpg_streamer")
+        if run("pidof ustreamer").returncode == 0:
+            p = run("pidof ustreamer")
             pid = p.stdout.strip()
             print(f"{GREEN}✓ Service Status:{NC} Running (PID: {pid}") if pid else print(f"{GREEN}✓ Service Status:{NC} Running")
         else:
@@ -372,14 +387,14 @@ def print_final_report() -> None:
 
         print("")
         print(f"{YELLOW}Configuration:{NC}")
-        print(f"  • Resolution: {REPORT_MJPG_RESOLUTION} @ {REPORT_MJPG_FPS} fps")
-        print(f"  • Port: {REPORT_MJPG_PORT}")
+        print(f"  • Resolution: {REPORT_USTREAMER_RESOLUTION} @ {REPORT_USTREAMER_FPS} fps")
+        print(f"  • Port: {REPORT_USTREAMER_PORT}")
         print(f"  • Auto-restart: Every {REPORT_AUTO_RESTART_INTERVAL} minutes")
 
         print("")
         print(f"{YELLOW}Access URLs:{NC}")
-        print(f"  • Stream: http://{REPORT_IP}:{REPORT_MJPG_PORT}/?action=stream")
-        print(f"  • Snapshot: http://{REPORT_IP}:{REPORT_MJPG_PORT}/?action=snapshot")
+        print(f"  • Stream: http://{REPORT_IP}:{REPORT_USTREAMER_PORT}/stream")
+        print(f"  • Snapshot: http://{REPORT_IP}:{REPORT_USTREAMER_PORT}/snapshot")
 
     else:
         print(f"{RED}⚠ ERRORS ENCOUNTERED{NC}")
@@ -392,22 +407,34 @@ def print_final_report() -> None:
             print(f"  • {line}")
         print("")
         print("Despite errors, attempting to show current status:")
-        if run("pidof mjpg_streamer").returncode == 0:
-            print(f"  {GREEN}✓{NC} mjpg_streamer is running")
+        if run("pidof ustreamer").returncode == 0:
+            print(f"  {GREEN}✓{NC} ustreamer is running")
         else:
-            print(f"  {RED}✗{NC} mjpg_streamer is not running")
+            print(f"  {RED}✗{NC} ustreamer is not running")
+
+    # Always show configuration and URLs, regardless of errors
+    print("")
+    print(f"{YELLOW}Configuration:{NC}")
+    print(f"  • Resolution: {REPORT_USTREAMER_RESOLUTION} @ {REPORT_USTREAMER_FPS} fps")
+    print(f"  • Port: {REPORT_USTREAMER_PORT}")
+    print(f"  • Auto-restart: Every {REPORT_AUTO_RESTART_INTERVAL} minutes")
+
+    print("")
+    print(f"{YELLOW}Access URLs:{NC}")
+    print(f"  • Stream: http://{REPORT_IP}:{REPORT_USTREAMER_PORT}/stream")
+    print(f"  • Snapshot: http://{REPORT_IP}:{REPORT_USTREAMER_PORT}/snapshot")
 
     print("")
     print(f"{YELLOW}Quick Commands:{NC}")
-    print("  • Status: /etc/init.d/mjpg_streamer status")
-    print("  • Logs: tail -f /var/log/mjpg_streamer.log")
-    print("  • Restart: /etc/init.d/mjpg_streamer restart")
+    print("  • Status: /etc/init.d/ustreamer status")
+    print("  • Logs: tail -f /var/log/ustreamer.log")
+    print("  • Restart: /etc/init.d/ustreamer restart")
     print("")
 
 
 def main() -> None:
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print("         MJPG STREAMER INSTALLATION STARTING")
+    print("         USTREAMER INSTALLATION STARTING")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     print("")
 
@@ -416,9 +443,9 @@ def main() -> None:
     print(f"System IP: {REPORT_IP}")
     print("")
 
-    install_mjpg_streamer()
+    install_ustreamer()
     backup_and_disable_services()
-    create_mjpg_streamer_service()
+    create_ustreamer_service()
     configure_services()
     manage_camera(REPORT_IP)
     restart_moonraker()

@@ -14,7 +14,7 @@ The repository has been reorganized into a clean, professional structure:
 ├── install.sh                    # Shell script wrapper (ash compatible)
 ├── README.md                     # Main documentation
 ├── scripts/                      # Installation scripts
-│   └── mjpg_streamer_install.sh # mjpg_streamer installer
+│   └── ustreamer_install.py # ustreamer installer
 ├── configs/                      # Configuration files
 │   ├── KAMP/                    # KAMP configuration files
 │   ├── KAMP_Settings.cfg        # KAMP settings
@@ -36,7 +36,7 @@ The repository has been reorganized into a clean, professional structure:
 4. Everything installs automatically!
 
 ### 2. **What Gets Installed**
-- ✅ **mjpg_streamer** - Webcam streaming
+- ✅ **ustreamer** - Webcam streaming
 - ✅ **KAMP Configuration** - Adaptive meshing and purging
 - ✅ **Overrides Configuration** - Custom printer settings  
 - ✅ **Cleanup Service** - Automatic backup management
@@ -60,7 +60,7 @@ ssh root@192.168.1.4 "cd /tmp && ./install.sh --dry-run"
 
 # Results:
 🎉 All components installed successfully!
-✓ mjpg_streamer   : SUCCESS
+✓ ustreamer       : SUCCESS
 ✓ kamp            : SUCCESS  
 ✓ overrides       : SUCCESS
 ✓ cleanup         : SUCCESS
@@ -112,7 +112,7 @@ sudo ./install.sh --dry-run --verbose --components kamp overrides
 
 ## 📋 Installation Process
 
-1. **mjpg_streamer**: Runs existing install script
+1. **ustreamer**: Runs existing install script
 2. **KAMP**: Copies configs + safely adds include to printer.cfg
 3. **Overrides**: Copies to custom config directory
 4. **Cleanup Service**: Installs service + adds to moonraker.asvc
