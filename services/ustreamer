@@ -104,8 +104,8 @@ start_service() {
     
     # Let both run for 1 second, then kill them forcefully
     if [ -n "$webrtc_pid" ] || [ -n "$cam_pid" ]; then
-        log "Letting services run for 1 second..."
-        sleep 5
+        log "Letting services run for 2 seconds..."
+        sleep 2
         
         # Force kill webrtc
         if [ -n "$webrtc_pid" ]; then
