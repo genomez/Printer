@@ -92,28 +92,28 @@ class PrinterInstaller:
             self.log(f"Failed to copy directory {src}: {e}", "ERROR")
             return False
             
-    def install_mjpg_streamer(self):
-        """Install mjpg_streamer using the existing script"""
-        self.log("Installing mjpg_streamer...")
+    def install_ustreamer(self):
+        """Install ustreamer using the existing script"""
+        self.log("Installing ustreamer...")
         
-        script_path = REPO_ROOT / "scripts" / "mjpg_streamer_install.sh"
+        script_path = REPO_ROOT / "scripts" / "ustreamer_install.sh"
         if not self.check_file_exists(script_path):
-            self.log("mjpg_streamer install script not found", "ERROR")
+            self.log("ustreamer install script not found", "ERROR")
             return False
             
         if self.dry_run:
-            self.log("Would run: sh 'mjpg_streamer'")
+            self.log("Would run: sh 'ustreamer'")
             return True
             
         # Prefer Python implementation if available; fallback to shell script
-        py_script_path = REPO_ROOT / "scripts" / "mjpg_streamer_install.py"
-        shell_script_path = REPO_ROOT / "scripts" / "mjpg_streamer_install.sh"
+        py_script_path = REPO_ROOT / "scripts" / "ustreamer_install.py"
+        shell_script_path = REPO_ROOT / "scripts" / "ustreamer_install.sh"
 
         if self.dry_run:
             if py_script_path.exists():
-                self.log("Would run: python3 'scripts/mjpg_streamer_install.py'")
+                self.log("Would run: python3 'scripts/ustreamer_install.py'")
             else:
-                self.log("Would run: sh 'scripts/mjpg_streamer_install.sh'")
+                self.log("Would run: sh 'scripts/ustreamer_install.sh'")
             return True
 
         # Execute with optional live output only when verbose
@@ -127,7 +127,7 @@ class PrinterInstaller:
                 command = f"sh '{shell_script_path}'"
 
             if self.verbose:
-                self.log("Running mjpg_streamer installer with live output...")
+                self.log("Running ustreamer installer with live output...")
                 process = subprocess.Popen(
                     command,
                     shell=True,
@@ -146,13 +146,13 @@ class PrinterInstaller:
                 return_code = result.returncode
 
             if return_code == 0:
-                self.log("mjpg_streamer installation completed successfully")
+                self.log("ustreamer installation completed successfully")
                 return True
             else:
-                self.log(f"mjpg_streamer installation failed with return code {return_code}", "ERROR")
+                self.log(f"ustreamer installation failed with return code {return_code}", "ERROR")
                 return False
         except Exception as e:
-            self.log(f"Failed to run mjpg_streamer installer: {e}", "ERROR")
+            self.log(f"Failed to run ustreamer installer: {e}", "ERROR")
             return False
             
     def install_kamp(self):
@@ -356,15 +356,15 @@ class PrinterInstaller:
     def run_installation(self, components=None):
         """Run the complete installation"""
         if components is None:
-            components = ['mjpg_streamer', 'kamp', 'overrides', 'cleanup', 'resonance', 'bed_mesh']
+            components = ['ustreamer', 'kamp', 'overrides', 'cleanup', 'resonance', 'bed_mesh']
             
         self.log("Starting 3D Printer Installation...")
         self.log(f"Components to install: {', '.join(components)}")
         
         results = {}
         
-        if 'mjpg_streamer' in components:
-            results['mjpg_streamer'] = self.install_mjpg_streamer()
+        if 'ustreamer' in components:
+            results['ustreamer'] = self.install_ustreamer()
             
         if 'kamp' in components:
             results['kamp'] = self.install_kamp()
@@ -407,7 +407,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Show what would be done without actually doing it")
     parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed output")
     parser.add_argument("--components", nargs="+", 
-                       choices=['mjpg_streamer', 'kamp', 'overrides', 'cleanup', 'resonance', 'bed_mesh'],
+                       choices=['ustreamer', 'kamp', 'overrides', 'cleanup', 'resonance', 'bed_mesh'],
                        help="Specific components to install (default: all)")
     
     args = parser.parse_args()
