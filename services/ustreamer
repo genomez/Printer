@@ -66,8 +66,13 @@ start_service() {
     mkdir -p "$(dirname "$DEDICATED_LOG")"
     
     for i in $(seq 1 30); do
-        [ -x "$BIN" ] && break
-        log "Waiting for $BIN ($i/30)..."
+        [ -x "$BIN" ] && [ -c "$VIDEO_DEV" ] && break
+        if [ ! -x "$BIN" ]; then
+            log "Waiting for $BIN ($i/30)..."
+        fi
+        if [ ! -c "$VIDEO_DEV" ]; then
+            log "Waiting for device $VIDEO_DEV ($i/30)..."
+        fi
         sleep 1
     done
     [ -x "$BIN" ] || { log "FATAL: $BIN not found"; return 1; }
