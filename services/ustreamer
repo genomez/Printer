@@ -2,7 +2,7 @@
 # Tunables
 VIDEO_DEV="/dev/video0"
 RESOLUTION="1920x1080"
-FPS="10"
+FPS="30"
 PORT="8080"
 BIN="/usr/local/bin/ustreamer"
 RESTART_INTERVAL="30"
