@@ -104,20 +104,15 @@ start_service() {
     # Let both run for 1 second, then kill them forcefully
     if [ -n "$webrtc_pid" ] || [ -n "$cam_pid" ]; then
         log "Letting services run for 1 second..."
-        sleep 1
+        sleep 5
         
-        # Force kill both processes
+        # Force webrtc
         if [ -n "$webrtc_pid" ]; then
             log "Force killing webrtc_local (PID: $webrtc_pid)"
             kill -9 "$webrtc_pid" 2>/dev/null || true
             rm -f "/tmp/webrtc_local_temp"
         fi
-        
-        if [ -n "$cam_pid" ]; then
-            log "Force killing cam_app (PID: $cam_pid)"
-            kill -9 "$cam_pid" 2>/dev/null || true
-            rm -f "/tmp/cam_app_temp"
-        fi
+
     fi
     
     # Ensure webrtc_local doesn't exist directly at /usr/bin/webrtc_local
@@ -130,13 +125,10 @@ start_service() {
         fi
     fi
     
-    # Final cleanup of any remaining processes
-    killall webrtc_local 2>/dev/null || true
-    killall cam_app 2>/dev/null || true
 
     if fuser "$VIDEO_DEV" 2>/dev/null | grep -q '[0-9]'; then
         log "$VIDEO_DEV busy -- force killing all processes"
-        fuser -k -9 "$VIDEO_DEV" 2>/dev/null || true
+        fuser -k -9 /dev/video0 2>/dev/null || true
     fi
     
     # ustreamer command with similar functionality to mjpg_streamer
