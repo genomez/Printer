@@ -1,6 +1,5 @@
 #!/bin/sh
-# 3D Printer Installer Wrapper Script
-# This script provides a simple way to run the Python installer
+# wrapper to call py installer
 
 set -e
 
@@ -41,8 +40,8 @@ if ! command -v python3 > /dev/null 2>&1; then
 fi
 
 # Check if install.py exists
-if [ ! -f "install.py" ]; then
-    print_error "install.py not found in current directory"
+if [ ! -f "scripts/install.py" ]; then
+    print_error "scripts/install.py not found"
     exit 1
 fi
 
@@ -50,10 +49,10 @@ print_status "Starting 3D Printer Installation..."
 print_status "Python version: $(python3 --version)"
 
 # Make install.py executable
-chmod +x install.py
+chmod +x scripts/install.py
 
 # Run the installer with all arguments passed through
-python3 install.py "$@"
+python3 scripts/install.py "$@"
 
 # Check exit code
 if [ $? -eq 0 ]; then
