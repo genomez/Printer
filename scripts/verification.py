@@ -203,11 +203,69 @@ def verify_ustreamer():
         log("✗ ustreamer binary not found in PATH or standard locations", "ERROR")
         return False
 
+def verify_mainsail():
+    """Verify mainsail installation"""
+    all_good = True
+    
+    # Check if mainsail directory exists
+    mainsail_dir = "/mnt/UDISK/root/mainsail"
+    if check_dir_exists(mainsail_dir):
+        log("✓ mainsail directory found")
+    else:
+        log("✗ mainsail directory not found", "ERROR")
+        all_good = False
+    
+    # Check if symlink exists
+    symlink_path = "/usr/share/mainsail"
+    if os.path.islink(symlink_path):
+        log("✓ mainsail symlink found")
+    else:
+        log("✗ mainsail symlink not found", "ERROR")
+        all_good = False
+    
+    # Check if nginx config was replaced
+    nginx_conf = "/etc/nginx/nginx.conf"
+    if check_file_exists(nginx_conf):
+        try:
+            with open(nginx_conf, 'r') as f:
+                content = f.read()
+            if 'mainsail' in content and '4409' in content:
+                log("✓ nginx config contains mainsail configuration")
+            else:
+                log("✗ nginx config does not contain mainsail configuration", "ERROR")
+                all_good = False
+        except Exception as e:
+            log(f"Failed to read nginx config: {e}", "ERROR")
+            all_good = False
+    else:
+        log("✗ nginx config not found", "ERROR")
+        all_good = False
+    
+    # Check if update manager is configured in moonraker.conf
+    moonraker_conf = "/mnt/UDISK/printer_data/config/moonraker.conf"
+    if check_file_exists(moonraker_conf):
+        try:
+            with open(moonraker_conf, 'r') as f:
+                content = f.read()
+            if '[update_manager mainsail]' in content:
+                log("✓ [update_manager mainsail] found in moonraker.conf")
+            else:
+                log("✗ [update_manager mainsail] not found in moonraker.conf", "ERROR")
+                all_good = False
+        except Exception as e:
+            log(f"Failed to read moonraker.conf: {e}", "ERROR")
+            all_good = False
+    else:
+        log("✗ moonraker.conf not found", "ERROR")
+        all_good = False
+        
+    return all_good
+
 def verify_installation(components=None):
     """Verify that only the requested components were installed correctly"""
     # Default to all components if none provided
     if components is None:
-        components = ['ustreamer', 'kamp', 'overrides', 'cleanup', 'resonance', 'bed_mesh', 'timelapse']
+        components = ['ustreamer', 'kamp', 'overrides', 'cleanup', 'resonance', 'bed_mesh', 'timelapse', 'mainsail']
 
     log("Verifying installation...")
     all_good = True
@@ -247,12 +305,17 @@ def verify_installation(components=None):
         if not verify_ustreamer():
             all_good = False
 
+    # mainsail verification
+    if 'mainsail' in components:
+        if not verify_mainsail():
+            all_good = False
+
     return all_good
 
 def main():
     parser = argparse.ArgumentParser(description="Installation Verification Tool")
     parser.add_argument("--components", nargs="+", 
-                       choices=['ustreamer', 'kamp', 'overrides', 'cleanup', 'resonance', 'bed_mesh', 'timelapse'],
+                       choices=['ustreamer', 'kamp', 'overrides', 'cleanup', 'resonance', 'bed_mesh', 'timelapse', 'mainsail'],
                        help="Specific components to verify (default: all)")
     
     args = parser.parse_args()

@@ -25,7 +25,7 @@ REPORT_CAMERA_ACTIONS=""
 REPORT_CAMERA_STATUS=""
 REPORT_USTREAMER_PORT="8080"
 REPORT_USTREAMER_RESOLUTION="1920x1080"
-REPORT_USTREAMER_FPS="10"
+REPORT_USTREAMER_FPS="30"
 REPORT_AUTO_RESTART_INTERVAL="30"
 
 
@@ -64,6 +64,10 @@ def install_ustreamer() -> None:
     global REPORT_INSTALL_STATUS
     log_action("Installing ustreamer...")
 
+    # Stop existing service/process to avoid "Text file busy" on replace
+    run("/etc/init.d/ustreamer stop 2>/dev/null || true")
+    run("killall ustreamer 2>/dev/null || true")
+
     if run_ok("/etc/init.d/cron enable"):
         log_service("cron service enabled")
     else:
@@ -77,19 +81,21 @@ def install_ustreamer() -> None:
     try:
         # Create directory if it doesn't exist
         binary_dst.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Copy binary
-        shutil.copy2(binary_src, binary_dst)
-        os.chmod(binary_dst, 0o755)
-        log_action("Copied ustreamer binary to /usr/local/bin/ustreamer")
-        
+
+        # Copy to a temporary path, chmod, then atomically replace to avoid busy-text errors
+        tmp_path = binary_dst.parent / "ustreamer.new"
+        shutil.copy2(binary_src, tmp_path)
+        os.chmod(tmp_path, 0o755)
+        os.replace(tmp_path, binary_dst)
+        log_action("Installed ustreamer binary to /usr/local/bin/ustreamer (atomic replace)")
+
         # Test binary
         if run_ok("/usr/local/bin/ustreamer --help"):
             REPORT_INSTALL_STATUS = "ustreamer installed successfully"
         else:
             log_error("ustreamer binary test failed")
             REPORT_INSTALL_STATUS = "ustreamer installation failed"
-            
+
     except Exception as e:
         log_error(f"Failed to install ustreamer binary: {e}")
         REPORT_INSTALL_STATUS = "ustreamer installation failed"
@@ -168,10 +174,20 @@ def configure_services() -> None:
     log_action("Configuring services...")
 
     try:
-        with open("/mnt/UDISK/printer_data/moonraker.asvc", "a") as f:
-            f.write("\nustreamer\n")
-        log_action("Registered ustreamer with Moonraker supervisor")
-        log_service("ustreamer registered with Moonraker")
+        asvc_path = "/mnt/UDISK/printer_data/moonraker.asvc"
+        existing = ""
+        if Path(asvc_path).exists():
+            with open(asvc_path, "r") as f:
+                existing = f.read()
+        if "\nustreamer\n" in f"\n{existing}\n":
+            log_action("ustreamer already registered with Moonraker supervisor")
+        else:
+            with open(asvc_path, "a") as f:
+                if not existing.endswith('\n'):
+                    f.write('\n')
+                f.write("ustreamer\n")
+            log_action("Registered ustreamer with Moonraker supervisor")
+            log_service("ustreamer registered with Moonraker")
     except Exception:
         log_error("Failed to register with Moonraker")
 

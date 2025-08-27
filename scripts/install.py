@@ -18,7 +18,7 @@ class PrinterInstaller:
         
     def log(self, message, level="INFO"):
         prefix = "[DRY RUN] " if self.dry_run else ""
-        print(f"{prefix}[{level}] {message}")
+        print(f"{prefix}[{level}] {message}", flush=True)
         
     def run_command(self, command, capture_output=True):
         """Run a command locally on the printer"""
@@ -48,8 +48,6 @@ class PrinterInstaller:
             
     def run_installer(self, component_name, script_name):
         """Generic method to run any installer script"""
-        self.log(f"Installing {component_name}...")
-        
         installer_path = REPO_ROOT / "scripts" / script_name
         if not self.check_file_exists(installer_path):
             self.log(f"{component_name} install script not found", "ERROR")
@@ -61,9 +59,8 @@ class PrinterInstaller:
 
         # Execute with live output (always verbose)
         try:
-            command = f"python3 '{installer_path}'"
-
-            self.log(f"Running {component_name} installer with live output...")
+            # Force unbuffered output from child installers
+            command = f"PYTHONUNBUFFERED=1 python3 -u '{installer_path}'"
             process = subprocess.Popen(
                 command,
                 shell=True,
@@ -115,6 +112,10 @@ class PrinterInstaller:
     def modify_bed_mesh(self):
         """Modify bed_mesh.py to change minval parameter"""
         return self.run_installer("bed_mesh", "bed_mesh_install.py")
+        
+    def install_mainsail(self):
+        """Install Mainsail web interface"""
+        return self.run_installer("mainsail", "mainsail_install.py")
             
     def verify_installation(self, components=None):
         """Verify that only the requested components were installed correctly"""
@@ -161,7 +162,7 @@ class PrinterInstaller:
     def run_installation(self, components=None):
         """Run the complete installation"""
         if components is None:
-            components = ['ustreamer', 'kamp', 'overrides', 'cleanup', 'resonance', 'bed_mesh', 'timelapse']
+            components = ['ustreamer', 'kamp', 'overrides', 'cleanup', 'resonance', 'bed_mesh', 'timelapse', 'mainsail']
             
         self.log("Starting 3D Printer Installation...")
         self.log(f"Components to install: {', '.join(components)}")
@@ -169,25 +170,44 @@ class PrinterInstaller:
         results = {}
         
         if 'ustreamer' in components:
+            print("\n" + ("#"*60) + "\n[INFO] Running ustreamer installer\n" + ("#"*60) + "\n", flush=True)
             results['ustreamer'] = self.install_ustreamer()
             
+            
         if 'kamp' in components:
+            print("\n" + ("#"*60) + "\n[INFO] Running kamp installer\n" + ("#"*60) + "\n", flush=True)
             results['kamp'] = self.install_kamp()
             
+            
         if 'overrides' in components:
+            print("\n" + ("#"*60) + "\n[INFO] Running overrides installer\n" + ("#"*60) + "\n", flush=True)
             results['overrides'] = self.install_overrides()
             
+            
         if 'cleanup' in components:
+            print("\n" + ("#"*60) + "\n[INFO] Running cleanup installer\n" + ("#"*60) + "\n", flush=True)
             results['cleanup'] = self.install_cleanup_service()
             
+            
         if 'resonance' in components:
+            print("\n" + ("#"*60) + "\n[INFO] Running resonance installer\n" + ("#"*60) + "\n", flush=True)
             results['resonance'] = self.install_resonance_tester()
             
+            
         if 'timelapse' in components:
+            print("\n" + ("#"*60) + "\n[INFO] Running timelapse installer\n" + ("#"*60) + "\n", flush=True)
             results['timelapse'] = self.install_timelapse()
             
+            
         if 'bed_mesh' in components:
+            print("\n" + ("#"*60) + "\n[INFO] Running bed_mesh installer\n" + ("#"*60) + "\n", flush=True)
             results['bed_mesh'] = self.modify_bed_mesh()
+            
+            
+        if 'mainsail' in components:
+            print("\n" + ("#"*60) + "\n[INFO] Running mainsail installer\n" + ("#"*60) + "\n", flush=True)
+            results['mainsail'] = self.install_mainsail()
+            
             
         # Verify only the requested components
         if not self.dry_run:
@@ -215,7 +235,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Show what would be done without actually doing it")
 
     parser.add_argument("--components", nargs="+", 
-                       choices=['ustreamer', 'kamp', 'overrides', 'cleanup', 'resonance', 'bed_mesh', 'timelapse'],
+                       choices=['ustreamer', 'kamp', 'overrides', 'cleanup', 'resonance', 'bed_mesh', 'timelapse', 'mainsail'],
                        help="Specific components to install (default: all)")
     
     args = parser.parse_args()
