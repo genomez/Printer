@@ -7,6 +7,8 @@
 - **Cleanup Service** - Automatic backup management
 - **Custom Resonance Tester** - Enhanced resonance testing
 - **Bed Mesh Modifications** - System parameter adjustments
+- **Moonraker Timelapse** - Timelapse functionality
+- **Mainsail** - Web interface for 3D printer management
 
 ## Quick Start
 
@@ -31,4 +33,4 @@
  ./install.sh --components kamp overrides cleanup
 ```
 
-Available components: `ustreamer`, `kamp`, `overrides`, `cleanup`, `resonance`, `bed_mesh`, `timelapse`
+Available components: `ustreamer`, `kamp`, `overrides`, `cleanup`, `resonance`, `bed_mesh`, `timelapse`, `mainsail`

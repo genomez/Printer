@@ -116,7 +116,8 @@ def install_timelapse():
     if os.path.exists(temp_dir):
         shutil.rmtree(temp_dir)
         
-    clone_command = "git clone https://github.com/mainsail-crew/moonraker-timelapse.git /tmp/moonraker-timelapse"
+    git_bin = "/opt/bin/git" if os.path.exists("/opt/bin/git") else "git"
+    clone_command = f"{git_bin} clone --depth 1 --quiet https://github.com/mainsail-crew/moonraker-timelapse.git /tmp/moonraker-timelapse"
     result = run_command(clone_command)
     if not result or result.returncode != 0:
         log("Failed to clone moonraker-timelapse repository", "ERROR")
