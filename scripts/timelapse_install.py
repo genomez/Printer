@@ -78,7 +78,7 @@ def add_include_to_printer_cfg(include_line):
     return True
 
 def add_timelapse_to_moonraker_conf():
-    """Add [timelapse] section to moonraker.conf"""
+    """Ensure [timelapse] exists and contains desired output_path in moonraker.conf"""
     moonraker_conf = Path(CONFIG_DIR) / "moonraker.conf"
     if not check_file_exists(moonraker_conf):
         log("moonraker.conf not found - cannot add timelapse section", "ERROR")
@@ -86,24 +86,105 @@ def add_timelapse_to_moonraker_conf():
         
     with open(moonraker_conf, 'r') as f:
         content = f.read()
-        
-    if '[timelapse]' in content:
-        log("[timelapse] section already exists in moonraker.conf")
+
+    lines = content.splitlines()
+    section_start_index = None
+    desired_output_line = 'output_path: /mnt/UDISK/root/timelapse'
+
+    # Locate the [timelapse] section header exactly
+    for index, line in enumerate(lines):
+        if line.strip() == '[timelapse]':
+            section_start_index = index
+            break
+
+    # If section is missing, append it along with the desired output_path
+    if section_start_index is None:
+        if content and not content.endswith('\n'):
+            content += '\n'
+        content += '[timelapse]\n' + desired_output_line + '\n'
+        with open(moonraker_conf, 'w') as f:
+            f.write(content)
+        log("Added [timelapse] section and output_path to moonraker.conf")
         return True
-        
-    # Add the [timelapse] section
-    # Ensure file ends with a newline before appending
-    if not content.endswith('\n'):
-        content += '\n'
-    content += '[timelapse]\n'
-        
-    # Write back to file
-    with open(moonraker_conf, 'w') as f:
-        f.write(content)
-    log("Added [timelapse] section to moonraker.conf")
+
+    # Find the end of the [timelapse] section (next section header or EOF)
+    section_end_index = len(lines)
+    for scan_index in range(section_start_index + 1, len(lines)):
+        stripped = lines[scan_index].strip()
+        if stripped.startswith('[') and stripped.endswith(']'):
+            section_end_index = scan_index
+            break
+
+    # Check if output_path already exists in the section (support both ':' and '=')
+    has_output_path = False
+    for section_line_index in range(section_start_index + 1, section_end_index):
+        stripped = lines[section_line_index].strip()
+        if stripped.startswith('output_path:') or stripped.startswith('output_path ='):
+            has_output_path = True
+            break
+
+    # Insert desired output_path if missing
+    if not has_output_path:
+        insert_index = section_start_index + 1
+        lines.insert(insert_index, desired_output_line)
+        new_content = '\n'.join(lines)
+        if not new_content.endswith('\n'):
+            new_content += '\n'
+        with open(moonraker_conf, 'w') as f:
+            f.write(new_content)
+        log("Added output_path to existing [timelapse] in moonraker.conf")
+        return True
+
+    log("[timelapse] section already exists in moonraker.conf")
     return True
 
-def install_timelapse():
+def apply_mjpeg_patch(tl_content):
+    original_content = tl_content
+
+    # Prefer codec mjpeg over libx264
+    tl_content = tl_content.replace("-vcodec libx264", "-vcodec mjpeg")
+    tl_content = tl_content.replace("-c:v libx264", "-c:v mjpeg")
+
+    # Map CRF (x264) to q:v (mjpeg quality). Keep the same numeric value.
+    tl_content = tl_content.replace(" -crf ", " -q:v ")
+
+    # Remove GOP size flag which is not applicable to MJPEG
+    tl_content = tl_content.replace(" -threads 2 -g 5", " -threads 2")
+    tl_content = tl_content.replace(" -g 5", "")
+
+    # Improve MP4 playback start without re-encode cost
+    tl_content = tl_content.replace(" -an", " -an -movflags +faststart")
+
+    return tl_content, tl_content != original_content
+
+
+def apply_h264_patch(tl_content):
+    original_content = tl_content
+
+    # Replace any mjpeg or libx264 usage with desired h264 command shape
+    # Normalize both -vcodec and -c:v flags to libx264
+    tl_content = tl_content.replace("-vcodec mjpeg", "-vcodec libx264")
+    tl_content = tl_content.replace("-c:v mjpeg", "-c:v libx264")
+    # Ensure -c:v libx264 exists
+    tl_content = tl_content.replace("-vcodec libx264", "-c:v libx264")
+
+    # Set preset and tune stillimage
+    # Insert/replace preset and tune after codec declaration when present
+    tl_content = tl_content.replace("-c:v libx264", "-c:v libx264 -preset ultrafast -tune stillimage")
+
+    # Set GOP to fps: replace occurrences of " -threads 2 -g 5" or " -g 5" with dynamic fps placeholder
+    # We cannot know fps at install time, so we replace any fixed -g 5 with " -g " + str(fps) at runtime pattern.
+    # The original code builds: " -g " + str(fps) when using our desired form; ensure we remove hard-coded 5.
+    tl_content = tl_content.replace(" -g 5", "")
+
+    # Ensure CRF remains CRF for h264
+    tl_content = tl_content.replace(" -q:v ", " -crf ")
+
+    # Keep pix_fmt, an, extra params and output as-is
+    return tl_content, tl_content != original_content
+
+
+def install_timelapse(encoder="mjpeg"):
     """Install moonraker-timelapse component"""
     log("Installing moonraker-timelapse component...")
     
@@ -133,6 +214,26 @@ def install_timelapse():
         return False
         
     if not copy_file(timelapse_src, timelapse_dst):
+        return False
+    
+    # After copying, patch the component encoder based on selection
+    try:
+        with open(timelapse_dst, 'r') as f:
+            tl_content = f.read()
+
+        if encoder == "h264":
+            tl_content, changed = apply_h264_patch(tl_content)
+        else:
+            tl_content, changed = apply_mjpeg_patch(tl_content)
+
+        if changed:
+            with open(timelapse_dst, 'w') as f:
+                f.write(tl_content)
+            log(f"Patched timelapse.py to use {encoder.upper()} encoding for timelapse videos")
+        else:
+            log("timelapse.py did not contain expected codec strings; no codec patch applied", "INFO")
+    except Exception as e:
+        log(f"Failed to patch timelapse.py for {encoder.upper()}: {e}", "ERROR")
         return False
         
     # Copy timelapse.cfg to config directory
@@ -174,6 +275,7 @@ def install_timelapse():
 def main():
     parser = argparse.ArgumentParser(description="Moonraker Timelapse Installer")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be done without actually doing it")
+    parser.add_argument("--encoder", choices=["mjpeg", "h264"], default="mjpeg", help="Select encoder to patch in")
     
     args = parser.parse_args()
     
@@ -183,11 +285,11 @@ def main():
         sys.exit(1)
     
     if args.dry_run:
-        log("DRY RUN: Would install moonraker-timelapse component")
+        log(f"DRY RUN: Would install moonraker-timelapse component with encoder {args.encoder}")
         sys.exit(0)
     
     try:
-        success = install_timelapse()
+        success = install_timelapse(encoder=args.encoder)
         sys.exit(0 if success else 1)
     except KeyboardInterrupt:
         log("Installation interrupted by user", "ERROR")
