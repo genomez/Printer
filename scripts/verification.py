@@ -315,7 +315,7 @@ def verify_installation(components=None):
 def main():
     parser = argparse.ArgumentParser(description="Installation Verification Tool")
     parser.add_argument("--components", nargs="+", 
-                       choices=['ustreamer', 'kamp', 'overrides', 'cleanup', 'resonance', 'bed_mesh', 'timelapse', 'mainsail'],
+                       choices=['ustreamer', 'kamp', 'overrides', 'cleanup', 'resonance', 'bed_mesh', 'timelapse', 'timelapseh264', 'mainsail'],
                        help="Specific components to verify (default: all)")
     
     args = parser.parse_args()

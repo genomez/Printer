@@ -46,7 +46,7 @@ class PrinterInstaller:
         
 
             
-    def run_installer(self, component_name, script_name):
+    def run_installer(self, component_name, script_name, extra_args=None):
         """Generic method to run any installer script"""
         installer_path = REPO_ROOT / "scripts" / script_name
         if not self.check_file_exists(installer_path):
@@ -54,13 +54,18 @@ class PrinterInstaller:
             return False
             
         if self.dry_run:
-            self.log(f"Would run: python3 'scripts/{script_name}'")
+            if extra_args:
+                args_str = " ".join(extra_args)
+                self.log(f"Would run: python3 'scripts/{script_name}' {args_str}")
+            else:
+                self.log(f"Would run: python3 'scripts/{script_name}'")
             return True
 
         # Execute with live output (always verbose)
         try:
             # Force unbuffered output from child installers
-            command = f"PYTHONUNBUFFERED=1 python3 -u '{installer_path}'"
+            args_str = " " + " ".join(extra_args) if extra_args else ""
+            command = f"PYTHONUNBUFFERED=1 python3 -u '{installer_path}'{args_str}"
             process = subprocess.Popen(
                 command,
                 shell=True,
@@ -108,6 +113,10 @@ class PrinterInstaller:
     def install_timelapse(self):
         """Install moonraker-timelapse component"""
         return self.run_installer("timelapse", "timelapse_install.py")
+
+    def install_timelapse_h264(self):
+        """Install moonraker-timelapse component with H264 encoder"""
+        return self.run_installer("timelapse (H264)", "timelapse_install.py", extra_args=["--encoder", "h264"])
         
     def modify_bed_mesh(self):
         """Modify bed_mesh.py to change minval parameter"""
@@ -162,7 +171,7 @@ class PrinterInstaller:
     def run_installation(self, components=None):
         """Run the complete installation"""
         if components is None:
-            components = ['ustreamer', 'kamp', 'overrides', 'cleanup', 'resonance', 'bed_mesh', 'timelapse', 'mainsail']
+            components = ['ustreamer', 'overrides', 'cleanup', 'resonance', 'bed_mesh', 'timelapse', 'mainsail']
             
         self.log("Starting 3D Printer Installation...")
         self.log(f"Components to install: {', '.join(components)}")
@@ -197,6 +206,10 @@ class PrinterInstaller:
         if 'timelapse' in components:
             print("\n" + ("#"*60) + "\n[INFO] Running timelapse installer\n" + ("#"*60) + "\n", flush=True)
             results['timelapse'] = self.install_timelapse()
+        
+        if 'timelapseh264' in components:
+            print("\n" + ("#"*60) + "\n[INFO] Running timelapse (H264) installer\n" + ("#"*60) + "\n", flush=True)
+            results['timelapseh264'] = self.install_timelapse_h264()
             
             
         if 'bed_mesh' in components:
@@ -235,7 +248,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Show what would be done without actually doing it")
 
     parser.add_argument("--components", nargs="+", 
-                       choices=['ustreamer', 'kamp', 'overrides', 'cleanup', 'resonance', 'bed_mesh', 'timelapse', 'mainsail'],
+                       choices=['ustreamer', 'kamp', 'overrides', 'cleanup', 'resonance', 'bed_mesh', 'timelapse', 'timelapseh264', 'mainsail'],
                        help="Specific components to install (default: all)")
     
     args = parser.parse_args()
