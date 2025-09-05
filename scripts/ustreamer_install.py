@@ -473,3 +473,8 @@ if __name__ == "__main__":
         print("ERROR: This script must be run as root", file=sys.stderr)
         sys.exit(1)
     main()
+    # Propagate failure to caller if any errors were recorded during installation
+    if REPORT_ERRORS:
+        sys.exit(1)
+    sys.exit(0)
+ 

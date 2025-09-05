@@ -127,46 +127,8 @@ class PrinterInstaller:
         return self.run_installer("mainsail", "mainsail_install.py")
             
     def verify_installation(self, components=None):
-        """Verify that only the requested components were installed correctly"""
-        self.log("Verifying installation...")
-        
-        installer_path = REPO_ROOT / "scripts" / "verification.py"
-        if not self.check_file_exists(installer_path):
-            self.log("verification script not found", "ERROR")
-            return False
-
-        # Build command with components if specified
-        command = f"python3 '{installer_path}'"
-        if components:
-            components_str = " ".join(components)
-            command += f" --components {components_str}"
-
-        # Execute with live output (always verbose)
-        try:
-            self.log("Running verification with live output...")
-            process = subprocess.Popen(
-                command,
-                shell=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                universal_newlines=True,
-                bufsize=1,
-            )
-            for line in iter(process.stdout.readline, ''):
-                if line:
-                    print(line.rstrip())
-            process.stdout.close()
-            return_code = process.wait()
-
-            if return_code == 0:
-                self.log("Verification completed successfully")
-                return True
-            else:
-                self.log(f"Verification failed with return code {return_code}", "ERROR")
-                return False
-        except Exception as e:
-            self.log(f"Failed to run verification: {e}", "ERROR")
-            return False
+        """Deprecated: central verification removed. Each installer now verifies itself."""
+        return True
         
     def run_installation(self, components=None):
         """Run the complete installation"""
@@ -222,9 +184,6 @@ class PrinterInstaller:
             results['mainsail'] = self.install_mainsail()
             
             
-        # Verify only the requested components
-        if not self.dry_run:
-            results['verification'] = self.verify_installation(components=components)
             
         # Print summary
         self.log("\n" + "="*50)
@@ -253,7 +212,6 @@ def main():
     
     args = parser.parse_args()
     
-    # Check if running as root
     if os.geteuid() != 0:
         print("ERROR: This installer must be run as root (use sudo)")
         sys.exit(1)
