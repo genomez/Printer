@@ -1,0 +1,179 @@
+name: Auto Sync genomez and jac with main
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+jobs:
+  sync-genomez:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Configure git
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          # Avoid phantom diffs on Linux runners
+          git config core.filemode false
+          git config core.autocrlf false
+          git config core.eol lf
+      
+      - name: Sync genomez branch with main (fast-forward or rebase)
+        id: sync-genomez
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          git checkout genomez
+          COMMITS_AHEAD=$(git rev-list --count main..genomez)
+          COMMITS_BEHIND=$(git rev-list --count genomez..main)
+          echo "Genomez is $COMMITS_AHEAD commits ahead of main"
+          echo "Genomez is $COMMITS_BEHIND commits behind main"
+          
+          if [ "$COMMITS_BEHIND" -eq 0 ]; then
+            echo "Genomez is already up to date with main; nothing to do."
+            exit 0
+          fi
+          
+          if [ "$COMMITS_AHEAD" -eq 0 ]; then
+            echo "No unique commits on genomez; performing fast-forward."
+            git merge --ff-only main
+            git push origin genomez
+            echo "updated=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          echo "Genomez has unique commits; rebasing onto main."
+          if git rebase main; then
+            echo "Rebase successful; pushing with lease."
+            git push --force-with-lease origin genomez
+            echo "updated=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Rebase resulted in conflicts; aborting."
+            git rebase --abort || true
+            echo "sync_failed=true" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+      
+      - name: Create issue on genomez conflict
+        if: steps.sync-genomez.outputs.sync_failed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['auto-sync-conflict'],
+              state: 'open'
+            });
+            
+            if (issues.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: 'Auto-sync conflict: genomez branch cannot be rebased onto main',
+                body: `The automated sync between \`main\` and \`genomez\` failed during rebase.
+                
+                **Workflow Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+                
+                Please resolve the conflicts manually and close this issue when done.`,
+                labels: ['auto-sync-conflict', 'needs-attention']
+              });
+              console.log('Created new issue for genomez sync conflict');
+            } else {
+              console.log('Issue already exists for genomez sync conflict');
+            }
+
+  sync-jac:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Configure git
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          # Avoid phantom diffs on Linux runners
+          git config core.filemode false
+          git config core.autocrlf false
+          git config core.eol lf
+      
+      - name: Sync jac branch with main (fast-forward or rebase)
+        id: sync-jac
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          git checkout jac
+          COMMITS_AHEAD=$(git rev-list --count main..jac)
+          COMMITS_BEHIND=$(git rev-list --count jac..main)
+          echo "Jac is $COMMITS_AHEAD commits ahead of main"
+          echo "Jac is $COMMITS_BEHIND commits behind main"
+          
+          if [ "$COMMITS_BEHIND" -eq 0 ]; then
+            echo "Jac is already up to date with main; nothing to do."
+            exit 0
+          fi
+          
+          if [ "$COMMITS_AHEAD" -eq 0 ]; then
+            echo "No unique commits on jac; performing fast-forward."
+            git merge --ff-only main
+            git push origin jac
+            echo "updated=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          echo "Jac has unique commits; rebasing onto main."
+          if git rebase main; then
+            echo "Rebase successful; pushing with lease."
+            git push --force-with-lease origin jac
+            echo "updated=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Rebase resulted in conflicts; aborting."
+            git rebase --abort || true
+            echo "sync_failed=true" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+      
+      - name: Create issue on jac conflict
+        if: steps.sync-jac.outputs.sync_failed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['auto-sync-conflict'],
+              state: 'open'
+            });
+            
+            if (issues.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: 'Auto-sync conflict: jac branch cannot be rebased onto main',
+                body: `The automated sync between \`main\` and \`jac\` failed during rebase.
+                
+                **Workflow Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+                
+                Please resolve the conflicts manually and close this issue when done.`,
+                labels: ['auto-sync-conflict', 'needs-attention']
+              });
+              console.log('Created new issue for jac sync conflict');
+            } else {
+              console.log('Issue already exists for jac sync conflict');
+            }
