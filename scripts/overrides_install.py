@@ -205,20 +205,12 @@ def update_bed_mesh_minval(dry_run: bool = False) -> bool:
 
 def main():
     parser = argparse.ArgumentParser(description="Overrides Configuration Installer")
-    parser.add_argument("--dry-run", action="store_true", help="Show what would be done without actually doing it")
-    
-    args = parser.parse_args()
+    parser.parse_args()
     
     # Check if running as root
     if os.geteuid() != 0:
         log("This installer must be run as root (use sudo)", "ERROR")
         sys.exit(1)
-    
-    if args.dry_run:
-        log("DRY RUN: Would install macros.cfg, start_print.cfg, overrides.cfg, overrides2.cfg")
-        update_custom_main_cfg(dry_run=True)
-        update_bed_mesh_minval(dry_run=True)
-        sys.exit(0)
     
     try:
         success_configs = install_custom_configs()

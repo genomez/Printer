@@ -274,7 +274,6 @@ def install_timelapse(encoder="mjpeg"):
 
 def main():
     parser = argparse.ArgumentParser(description="Moonraker Timelapse Installer")
-    parser.add_argument("--dry-run", action="store_true", help="Show what would be done without actually doing it")
     parser.add_argument("--encoder", choices=["mjpeg", "h264"], default="mjpeg", help="Select encoder to patch in")
     
     args = parser.parse_args()
@@ -283,10 +282,6 @@ def main():
     if os.geteuid() != 0:
         log("This installer must be run as root (use sudo)", "ERROR")
         sys.exit(1)
-    
-    if args.dry_run:
-        log(f"DRY RUN: Would install moonraker-timelapse component with encoder {args.encoder}")
-        sys.exit(0)
     
     try:
         success = install_timelapse(encoder=args.encoder)
